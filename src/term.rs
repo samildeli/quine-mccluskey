@@ -9,7 +9,7 @@ pub struct Term {
 }
 
 impl Term {
-    pub fn new(variable_count: u8, value: u32) -> Term {
+    pub fn new(variable_count: u8, value: u32) -> Self {
         Term {
             variable_count,
             value,
@@ -18,7 +18,7 @@ impl Term {
         }
     }
 
-    pub fn combine(&self, other: &Term) -> Option<Term> {
+    pub fn combine(&self, other: &Self) -> Option<Self> {
         if self.mask == other.mask {
             let diff = self.value ^ other.value;
 

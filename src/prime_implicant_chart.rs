@@ -8,7 +8,7 @@ pub struct PrimeImplicantChart {
 }
 
 impl PrimeImplicantChart {
-    pub fn new(implicants: Vec<Term>, dont_cares: &HashSet<u32>) -> PrimeImplicantChart {
+    pub fn new(implicants: Vec<Term>, dont_cares: &HashSet<u32>) -> Self {
         let mut terms = HashSet::new();
 
         for implicant in &implicants {

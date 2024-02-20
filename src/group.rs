@@ -9,15 +9,15 @@ pub struct Group {
 }
 
 impl Group {
-    pub fn new() -> Group {
+    pub fn new() -> Self {
         Group {
             terms: HashSet::new(),
             was_combined: false.into(),
         }
     }
 
-    pub fn group_terms(variable_count: u8, terms: &HashSet<u32>, sop: bool) -> Vec<Group> {
-        let mut groups: Vec<Group> = vec![Group::new(); (variable_count + 1) as usize];
+    pub fn group_terms(variable_count: u8, terms: &HashSet<u32>, sop: bool) -> Vec<Self> {
+        let mut groups = vec![Group::new(); (variable_count + 1) as usize];
 
         for &term in terms {
             let index = if sop {
@@ -32,7 +32,7 @@ impl Group {
         groups
     }
 
-    pub fn combine(&self, other: &Group) -> Group {
+    pub fn combine(&self, other: &Self) -> Self {
         let mut combined_group = Group::new();
 
         for term in &self.terms {
