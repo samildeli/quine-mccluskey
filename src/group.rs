@@ -26,7 +26,7 @@ impl Group {
                 term.count_zeros() - (32 - variable_count as u32)
             } as usize;
 
-            groups[index].terms.insert(Term::new(term));
+            groups[index].terms.insert(Term::new(variable_count, term));
         }
 
         groups
