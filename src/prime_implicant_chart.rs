@@ -1,14 +1,14 @@
 use std::collections::HashSet;
 
-use crate::{petrick::Petrick, term::Term};
+use crate::{implicant::Implicant, petrick::Petrick};
 
 pub struct PrimeImplicantChart {
-    implicants: Vec<Term>,
+    implicants: Vec<Implicant>,
     table: Vec<Vec<bool>>,
 }
 
 impl PrimeImplicantChart {
-    pub fn new(implicants: Vec<Term>, dont_cares: &HashSet<u32>) -> Self {
+    pub fn new(implicants: Vec<Implicant>, dont_cares: &HashSet<u32>) -> Self {
         let mut terms = HashSet::new();
 
         for implicant in &implicants {
@@ -32,7 +32,7 @@ impl PrimeImplicantChart {
         PrimeImplicantChart { implicants, table }
     }
 
-    pub fn solve(mut self) -> Vec<Vec<Term>> {
+    pub fn solve(mut self) -> Vec<Vec<Implicant>> {
         let essential_prime_implicants = self.extract_essential_prime_implicants();
 
         if !self.implicants.is_empty() {
@@ -47,7 +47,7 @@ impl PrimeImplicantChart {
         }
     }
 
-    fn extract_essential_prime_implicants(&mut self) -> Vec<Term> {
+    fn extract_essential_prime_implicants(&mut self) -> Vec<Implicant> {
         let mut essential_prime_implicants = vec![];
         let mut rows_to_extract = HashSet::new();
         let mut covered_columns = HashSet::new();
@@ -99,8 +99,8 @@ impl PrimeImplicantChart {
         essential_prime_implicants
     }
 
-    pub fn get_column_covering_implicants(&self) -> Vec<Vec<Term>> {
-        let mut column_covering_implicants: Vec<Vec<Term>> = vec![];
+    pub fn get_column_covering_implicants(&self) -> Vec<Vec<Implicant>> {
+        let mut column_covering_implicants: Vec<Vec<Implicant>> = vec![];
 
         for x in 0..self.table.len() {
             column_covering_implicants.push(vec![]);

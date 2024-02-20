@@ -1,20 +1,20 @@
 mod group;
+mod implicant;
 mod petrick;
 mod prime_implicant_chart;
-mod term;
 
 use std::collections::HashSet;
 
 use group::Group;
+use implicant::Implicant;
 use prime_implicant_chart::PrimeImplicantChart;
-use term::Term;
 
 pub fn minimize(
     variable_count: u8,
     minterms: &[u32],
     maxterms: &[u32],
     sop: bool,
-) -> Vec<Vec<Term>> {
+) -> Vec<Vec<Implicant>> {
     let minterms = HashSet::from_iter(minterms.iter().copied());
     let maxterms = HashSet::from_iter(maxterms.iter().copied());
     let dont_cares = get_dont_cares(variable_count, &minterms, &maxterms);
@@ -31,7 +31,7 @@ fn find_prime_implicants(
     maxterms: &HashSet<u32>,
     dont_cares: &HashSet<u32>,
     sop: bool,
-) -> Vec<Term> {
+) -> Vec<Implicant> {
     let terms = if sop { minterms } else { maxterms };
     let terms = terms.union(dont_cares).copied().collect();
 
@@ -79,7 +79,12 @@ mod tests {
         fn test(variable_count: u8, minterms: Vec<u32>, maxterms: Vec<u32>, sop: bool) {
             let solutions: Vec<Vec<String>> = minimize(variable_count, &minterms, &maxterms, sop)
                 .iter()
-                .map(|terms| terms.iter().map(|term| term.to_string()).collect())
+                .map(|implicants| {
+                    implicants
+                        .iter()
+                        .map(|implicant| implicant.to_string())
+                        .collect()
+                })
                 .collect();
 
             println!(
@@ -125,7 +130,7 @@ mod tests {
             minterms: Vec<u32>,
             maxterms: Vec<u32>,
             sop: bool,
-            answer: Vec<Term>,
+            answer: Vec<Implicant>,
         ) {
             let minterms = HashSet::from_iter(minterms.iter().copied());
             let maxterms = HashSet::from_iter(maxterms.iter().copied());
@@ -141,31 +146,31 @@ mod tests {
         }
 
         test(1, vec![], vec![0, 1], true, vec![]);
-        test(1, vec![0], vec![1], true, vec![Term::from("0")]);
-        test(1, vec![1], vec![0], true, vec![Term::from("1")]);
-        test(1, vec![0, 1], vec![], true, vec![Term::from("-")]);
+        test(1, vec![0], vec![1], true, vec![Implicant::from("0")]);
+        test(1, vec![1], vec![0], true, vec![Implicant::from("1")]);
+        test(1, vec![0, 1], vec![], true, vec![Implicant::from("-")]);
         test(1, vec![], vec![], true, vec![]);
         test(1, vec![], vec![0], true, vec![]);
         test(1, vec![], vec![1], true, vec![]);
-        test(1, vec![0], vec![], true, vec![Term::from("-")]);
-        test(1, vec![1], vec![], true, vec![Term::from("-")]);
+        test(1, vec![0], vec![], true, vec![Implicant::from("-")]);
+        test(1, vec![1], vec![], true, vec![Implicant::from("-")]);
 
         test(1, vec![0, 1], vec![], false, vec![]);
-        test(1, vec![1], vec![0], false, vec![Term::from("0")]);
-        test(1, vec![0], vec![1], false, vec![Term::from("1")]);
-        test(1, vec![], vec![0, 1], false, vec![Term::from("-")]);
+        test(1, vec![1], vec![0], false, vec![Implicant::from("0")]);
+        test(1, vec![0], vec![1], false, vec![Implicant::from("1")]);
+        test(1, vec![], vec![0, 1], false, vec![Implicant::from("-")]);
         test(1, vec![], vec![], false, vec![]);
         test(1, vec![0], vec![], false, vec![]);
         test(1, vec![1], vec![], false, vec![]);
-        test(1, vec![], vec![0], false, vec![Term::from("-")]);
-        test(1, vec![], vec![1], false, vec![Term::from("-")]);
+        test(1, vec![], vec![0], false, vec![Implicant::from("-")]);
+        test(1, vec![], vec![1], false, vec![Implicant::from("-")]);
 
         test(
             2,
             vec![0, 3],
             vec![2],
             true,
-            vec![Term::from("0-"), Term::from("-1")],
+            vec![Implicant::from("0-"), Implicant::from("-1")],
         );
 
         test(
@@ -174,10 +179,10 @@ mod tests {
             vec![3, 4, 7],
             true,
             vec![
-                Term::from("00-"),
-                Term::from("0-0"),
-                Term::from("-01"),
-                Term::from("-10"),
+                Implicant::from("00-"),
+                Implicant::from("0-0"),
+                Implicant::from("-01"),
+                Implicant::from("-10"),
             ],
         );
 
@@ -187,12 +192,12 @@ mod tests {
             vec![3, 6, 10, 12, 15],
             true,
             vec![
-                Term::from("00-0"),
-                Term::from("01-1"),
-                Term::from("10-1"),
-                Term::from("0-0-"),
-                Term::from("-00-"),
-                Term::from("--01"),
+                Implicant::from("00-0"),
+                Implicant::from("01-1"),
+                Implicant::from("10-1"),
+                Implicant::from("0-0-"),
+                Implicant::from("-00-"),
+                Implicant::from("--01"),
             ],
         );
     }

@@ -1,17 +1,17 @@
 use std::{cell::RefCell, collections::HashSet};
 
-use crate::term::Term;
+use crate::implicant::Implicant;
 
 #[derive(Debug, Clone)]
 pub struct Group {
-    terms: HashSet<Term>,
+    implicants: HashSet<Implicant>,
     was_combined: RefCell<bool>,
 }
 
 impl Group {
     pub fn new() -> Self {
         Group {
-            terms: HashSet::new(),
+            implicants: HashSet::new(),
             was_combined: false.into(),
         }
     }
@@ -26,7 +26,9 @@ impl Group {
                 term.count_zeros() - (32 - variable_count as u32)
             } as usize;
 
-            groups[index].terms.insert(Term::new(variable_count, term));
+            groups[index]
+                .implicants
+                .insert(Implicant::new(variable_count, term));
         }
 
         groups
@@ -35,10 +37,10 @@ impl Group {
     pub fn combine(&self, other: &Self) -> Self {
         let mut combined_group = Group::new();
 
-        for term in &self.terms {
-            for other_term in &other.terms {
-                if let Some(combined_term) = term.combine(other_term) {
-                    combined_group.terms.insert(combined_term);
+        for implicant in &self.implicants {
+            for other_implicant in &other.implicants {
+                if let Some(combined_implicant) = implicant.combine(other_implicant) {
+                    combined_group.implicants.insert(combined_implicant);
                     *self.was_combined.borrow_mut() = true;
                 }
             }
@@ -47,10 +49,12 @@ impl Group {
         combined_group
     }
 
-    pub fn get_prime_implicants(&self, dont_cares: &HashSet<u32>) -> Vec<Term> {
-        self.terms
+    pub fn get_prime_implicants(&self, dont_cares: &HashSet<u32>) -> Vec<Implicant> {
+        self.implicants
             .iter()
-            .filter(|term| !term.was_combined() && !term.get_terms().is_subset(dont_cares))
+            .filter(|implicant| {
+                !implicant.was_combined() && !implicant.get_terms().is_subset(dont_cares)
+            })
             .cloned()
             .collect()
     }

@@ -1,11 +1,11 @@
 use std::collections::HashSet;
 
-use crate::{prime_implicant_chart::PrimeImplicantChart, term::Term};
+use crate::{implicant::Implicant, prime_implicant_chart::PrimeImplicantChart};
 
 pub struct Petrick;
 
 impl Petrick {
-    pub fn solve(prime_implicant_chart: &PrimeImplicantChart) -> Vec<Vec<Term>> {
+    pub fn solve(prime_implicant_chart: &PrimeImplicantChart) -> Vec<Vec<Implicant>> {
         let mut sums: Vec<SumOfProduct> = prime_implicant_chart
             .get_column_covering_implicants()
             .into_iter()
@@ -42,7 +42,7 @@ impl Petrick {
         }
     }
 
-    fn filter_minimal_implicants(candidates: Vec<Vec<Term>>) -> Vec<Vec<Term>> {
+    fn filter_minimal_implicants(candidates: Vec<Vec<Implicant>>) -> Vec<Vec<Implicant>> {
         let min_count = candidates
             .iter()
             .map(|candidate| candidate.len())
@@ -55,8 +55,8 @@ impl Petrick {
             .collect()
     }
 
-    fn filter_minimal_literals(candidates: Vec<Vec<Term>>) -> Vec<Vec<Term>> {
-        let get_literal_count = |candidate: &Vec<Term>| {
+    fn filter_minimal_literals(candidates: Vec<Vec<Implicant>>) -> Vec<Vec<Implicant>> {
+        let get_literal_count = |candidate: &Vec<Implicant>| {
             candidate
                 .iter()
                 .fold(0, |acc, implicant| acc + implicant.get_literal_count())
@@ -76,9 +76,9 @@ struct SumOfProduct {
 }
 
 impl SumOfProduct {
-    pub fn new(terms: Vec<Term>) -> Self {
+    pub fn new(implicants: Vec<Implicant>) -> Self {
         SumOfProduct {
-            products: terms.into_iter().map(Product::new).collect(),
+            products: implicants.into_iter().map(Product::new).collect(),
         }
     }
 
@@ -109,38 +109,38 @@ impl SumOfProduct {
     }
 }
 
-impl From<SumOfProduct> for Vec<Vec<Term>> {
+impl From<SumOfProduct> for Vec<Vec<Implicant>> {
     fn from(value: SumOfProduct) -> Self {
         value
             .products
             .into_iter()
-            .map(|product| Vec::from_iter(product.terms))
+            .map(|product| Vec::from_iter(product.implicants))
             .collect()
     }
 }
 
 #[derive(Clone)]
 struct Product {
-    terms: HashSet<Term>,
+    implicants: HashSet<Implicant>,
 }
 
 impl Product {
-    pub fn new(term: Term) -> Self {
+    pub fn new(implicant: Implicant) -> Self {
         Product {
-            terms: [term].into(),
+            implicants: [implicant].into(),
         }
     }
 
     pub fn and(&self, other: &Self) -> Self {
         Product {
-            terms: self.terms.union(&other.terms).cloned().collect(),
+            implicants: self.implicants.union(&other.implicants).cloned().collect(),
         }
     }
 
     pub fn absorb(&self, other: &Self) -> Option<Self> {
-        if self.terms.is_subset(&other.terms) {
+        if self.implicants.is_subset(&other.implicants) {
             Some(self.clone())
-        } else if other.terms.is_subset(&self.terms) {
+        } else if other.implicants.is_subset(&self.implicants) {
             Some(other.clone())
         } else {
             None

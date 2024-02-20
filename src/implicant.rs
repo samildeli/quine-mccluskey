@@ -1,18 +1,18 @@
 use std::{cell::RefCell, collections::HashSet, fmt::Display, hash::Hash};
 
 #[derive(Debug, Clone)]
-pub struct Term {
+pub struct Implicant {
     variable_count: u8,
     value: u32,
     mask: u32,
     was_combined: RefCell<bool>,
 }
 
-impl Term {
-    pub fn new(variable_count: u8, value: u32) -> Self {
-        Term {
+impl Implicant {
+    pub fn new(variable_count: u8, term: u32) -> Self {
+        Implicant {
             variable_count,
-            value,
+            value: term,
             mask: 0,
             was_combined: false.into(),
         }
@@ -26,7 +26,7 @@ impl Term {
                 *self.was_combined.borrow_mut() = true;
                 *other.was_combined.borrow_mut() = true;
 
-                Some(Term {
+                Some(Implicant {
                     variable_count: self.variable_count,
                     value: self.value & !diff,
                     mask: self.mask | diff,
@@ -47,7 +47,7 @@ impl Term {
             if one_pos < 32 {
                 let mask = mask & !(1 << one_pos);
                 get_terms_(value, mask, terms);
-                get_terms_(value | (1 << one_pos), mask, terms);
+                get_terms_(value | 1 << one_pos, mask, terms);
             } else {
                 terms.insert(value);
             }
@@ -67,24 +67,24 @@ impl Term {
     }
 }
 
-impl PartialEq for Term {
+impl PartialEq for Implicant {
     fn eq(&self, other: &Self) -> bool {
         self.value == other.value && self.mask == other.mask
     }
 }
 
-impl Eq for Term {}
+impl Eq for Implicant {}
 
-impl Hash for Term {
+impl Hash for Implicant {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.value.hash(state);
         self.mask.hash(state);
     }
 }
 
-impl From<&str> for Term {
+impl From<&str> for Implicant {
     fn from(value: &str) -> Self {
-        Term {
+        Implicant {
             variable_count: value.len() as u8,
             value: u32::from_str_radix(&value.replace('-', "0"), 2).unwrap(),
             mask: u32::from_str_radix(&value.replace('1', "0").replace('-', "1"), 2).unwrap(),
@@ -93,7 +93,7 @@ impl From<&str> for Term {
     }
 }
 
-impl Display for Term {
+impl Display for Implicant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut str = String::new();
 
