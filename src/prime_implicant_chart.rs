@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::{implicant::Implicant, petrick::Petrick};
 
@@ -19,13 +19,16 @@ impl PrimeImplicantChart {
 
         let mut table = vec![vec![false; implicants.len()]; terms.len()];
 
+        let term_indices: HashMap<u32, usize> =
+            HashMap::from_iter(terms.into_iter().enumerate().map(|(i, term)| (term, i)));
+
         for (y, implicant) in implicants.iter().enumerate() {
             let row_terms = implicant.get_terms();
+            let row_terms = row_terms.difference(dont_cares);
 
-            for (x, term) in terms.iter().enumerate() {
-                if row_terms.contains(term) {
-                    table[x][y] = true;
-                }
+            for term in row_terms {
+                let x = *term_indices.get(term).unwrap();
+                table[x][y] = true;
             }
         }
 
