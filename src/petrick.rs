@@ -23,17 +23,17 @@ impl Petrick {
     }
 
     fn distribute(sums: &mut Vec<SumOfProduct>) {
-        let mut new_sums = vec![];
+        let mut distributed_sums = vec![];
 
         for i in (0..sums.len()).step_by(2) {
             if i < sums.len() - 1 {
-                new_sums.push(sums[i].distribute(&sums[i + 1]));
+                distributed_sums.push(sums[i].distribute(&sums[i + 1]));
             } else {
-                new_sums.push(sums.pop().unwrap());
+                distributed_sums.push(sums.pop().unwrap());
             }
         }
 
-        *sums = new_sums;
+        *sums = distributed_sums;
     }
 
     fn absorb(sums: &mut Vec<SumOfProduct>) {
@@ -57,9 +57,9 @@ impl Petrick {
 
     fn filter_minimal_literals(candidates: Vec<Vec<Implicant>>) -> Vec<Vec<Implicant>> {
         let get_literal_count = |candidate: &Vec<Implicant>| {
-            candidate
-                .iter()
-                .fold(0, |acc, implicant| acc + implicant.get_literal_count())
+            candidate.iter().fold(0, |acc, implicant| {
+                acc + implicant.get_literal_count() as u32
+            })
         };
 
         let min_count = candidates.iter().map(get_literal_count).min().unwrap();
