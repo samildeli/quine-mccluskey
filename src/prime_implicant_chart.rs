@@ -35,7 +35,7 @@ impl PrimeImplicantChart {
     pub fn solve(mut self) -> Vec<Vec<Implicant>> {
         let essential_prime_implicants = self.extract_essential_prime_implicants();
 
-        if !self.implicants.is_empty() {
+        if !self.table.is_empty() {
             let petrick_solutions = Petrick::solve(&self);
 
             petrick_solutions
