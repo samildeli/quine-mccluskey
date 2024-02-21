@@ -14,6 +14,15 @@ pub fn minimize(
     minterms: &[u32],
     maxterms: &[u32],
     sop: bool,
+) -> Vec<Vec<String>> {
+    vec![]
+}
+
+fn minimize_internal(
+    variable_count: u8,
+    minterms: &[u32],
+    maxterms: &[u32],
+    sop: bool,
 ) -> Vec<Vec<Implicant>> {
     let minterms = HashSet::from_iter(minterms.iter().copied());
     let maxterms = HashSet::from_iter(maxterms.iter().copied());
@@ -72,59 +81,53 @@ fn get_dont_cares(
 
 #[cfg(test)]
 mod tests {
+    use itertools::Itertools;
+    use rand::Rng;
+
     use super::*;
 
     #[test]
-    fn test_minimize() {
-        fn test(variable_count: u8, minterms: Vec<u32>, maxterms: Vec<u32>, sop: bool) {
-            let solutions: Vec<Vec<String>> = minimize(variable_count, &minterms, &maxterms, sop)
-                .iter()
-                .map(|implicants| {
-                    implicants
-                        .iter()
-                        .map(|implicant| implicant.to_string())
-                        .collect()
-                })
-                .collect();
-
-            println!(
-                "sop: {}\nminterms: {:?}\nmaxterms: {:?}\nsolutions: {:#?}\n",
-                sop, minterms, maxterms, solutions
-            );
-        }
-
-        test(1, vec![], vec![0, 1], true);
-        test(1, vec![0], vec![1], true);
-        test(1, vec![1], vec![0], true);
-        test(1, vec![0, 1], vec![], true);
-        test(1, vec![], vec![], true);
-        test(1, vec![], vec![0], true);
-        test(1, vec![], vec![1], true);
-        test(1, vec![0], vec![], true);
-        test(1, vec![1], vec![], true);
-
-        test(1, vec![0, 1], vec![], false);
-        test(1, vec![1], vec![0], false);
-        test(1, vec![0], vec![1], false);
-        test(1, vec![], vec![0, 1], false);
-        test(1, vec![], vec![], false);
-        test(1, vec![0], vec![], false);
-        test(1, vec![1], vec![], false);
-        test(1, vec![], vec![0], false);
-        test(1, vec![], vec![1], false);
-
-        test(2, vec![0, 3], vec![2], true);
-        test(2, vec![0, 3], vec![2], false);
-
-        test(3, vec![1, 2, 5], vec![3, 4, 7], true);
-        test(3, vec![1, 2, 5], vec![3, 4, 7], false);
-
-        test(4, vec![2, 4, 5, 7, 9], vec![3, 6, 10, 12, 15], true);
-        test(4, vec![2, 4, 5, 7, 9], vec![3, 6, 10, 12, 15], false);
+    fn test_minimize_internal_exhaustive() {
+        test_minimize_internal(1..=3, None);
     }
 
     #[test]
-    fn test_prime_implicants() {
+    fn test_minimize_internal_random() {
+        test_minimize_internal(1..=15, Some(1));
+    }
+
+    fn test_minimize_internal<R: Iterator<Item = u8>>(variable_count_range: R, count: Option<u32>) {
+        for variable_count in variable_count_range {
+            let term_combinations = if let Some(count) = count {
+                generate_terms_random(variable_count, count)
+            } else {
+                generate_terms_exhaustive(variable_count)
+            };
+
+            for sop in [true, false] {
+                for terms in &term_combinations {
+                    println!(
+                        "sop: {}, variable_count: {}, minterms: {:?}, maxterms: {:?}",
+                        sop, variable_count, terms.0, terms.1
+                    );
+
+                    let solutions = minimize_internal(
+                        variable_count,
+                        &Vec::from_iter(terms.0.clone()),
+                        &Vec::from_iter(terms.1.clone()),
+                        sop,
+                    );
+
+                    for solution in &solutions {
+                        assert!(check_solution(&terms.0, &terms.1, sop, solution));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_find_prime_implicants() {
         fn test(
             variable_count: u8,
             minterms: Vec<u32>,
@@ -200,5 +203,78 @@ mod tests {
                 Implicant::from("--01"),
             ],
         );
+    }
+
+    fn check_solution(
+        minterms: &HashSet<u32>,
+        maxterms: &HashSet<u32>,
+        sop: bool,
+        solution: &[Implicant],
+    ) -> bool {
+        let terms = if sop { minterms } else { maxterms };
+        let other_terms = if sop { maxterms } else { minterms };
+        let mut covered_terms = HashSet::new();
+
+        for implicant in solution {
+            covered_terms.extend(implicant.get_terms());
+        }
+
+        terms.is_subset(&covered_terms) && other_terms.is_disjoint(&covered_terms)
+    }
+
+    fn generate_terms_exhaustive(variable_count: u8) -> Vec<(HashSet<u32>, HashSet<u32>)> {
+        let mut generated_terms = vec![];
+        let all_terms: HashSet<u32> = HashSet::from_iter(0..1 << variable_count);
+
+        for i in 0..=all_terms.len() {
+            let minterm_combinations = all_terms
+                .iter()
+                .copied()
+                .combinations(i)
+                .map(HashSet::from_iter);
+
+            for minterms in minterm_combinations {
+                let other_terms: HashSet<u32> = all_terms.difference(&minterms).copied().collect();
+
+                for j in 0..=other_terms.len() {
+                    let maxterm_combinations = other_terms
+                        .iter()
+                        .copied()
+                        .combinations(j)
+                        .map(HashSet::from_iter);
+
+                    generated_terms
+                        .extend(maxterm_combinations.map(|maxterms| (minterms.clone(), maxterms)));
+                }
+            }
+        }
+
+        generated_terms
+    }
+
+    fn generate_terms_random(variable_count: u8, count: u32) -> Vec<(HashSet<u32>, HashSet<u32>)> {
+        let mut generated_terms = vec![];
+        let mut rng = rand::thread_rng();
+
+        for _ in 0..count {
+            let mut all_terms = Vec::from_iter(0..1 << variable_count);
+            let mut minterms = HashSet::new();
+            let mut maxterms = HashSet::new();
+
+            for _ in 0..all_terms.len() {
+                let term = all_terms.swap_remove(rng.gen_range(0..all_terms.len()));
+                let choice = rng.gen_range(1..=3);
+
+                if choice == 1 {
+                    minterms.insert(term);
+                } else if choice == 2 {
+                    maxterms.insert(term);
+                }
+            }
+
+            generated_terms.push((minterms, maxterms));
+        }
+
+        generated_terms
     }
 }
