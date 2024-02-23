@@ -5,7 +5,10 @@ use crate::{implicant::Implicant, prime_implicant_chart::PrimeImplicantChart};
 pub struct Petrick;
 
 impl Petrick {
-    pub fn solve(prime_implicant_chart: &PrimeImplicantChart) -> Vec<Vec<Implicant>> {
+    pub fn solve(
+        prime_implicant_chart: &PrimeImplicantChart,
+        variable_count: u32,
+    ) -> Vec<Vec<Implicant>> {
         let mut sums: Vec<SumOfProduct> = prime_implicant_chart
             .get_column_covering_implicants()
             .into_iter()
@@ -19,7 +22,7 @@ impl Petrick {
 
         let candidates = sums.pop().unwrap().into();
         let candidates = Self::filter_minimal_implicants(candidates);
-        Self::filter_minimal_literals(candidates)
+        Self::filter_minimal_literals(candidates, variable_count)
     }
 
     fn distribute(sums: &mut Vec<SumOfProduct>) {
@@ -55,10 +58,13 @@ impl Petrick {
             .collect()
     }
 
-    fn filter_minimal_literals(candidates: Vec<Vec<Implicant>>) -> Vec<Vec<Implicant>> {
+    fn filter_minimal_literals(
+        candidates: Vec<Vec<Implicant>>,
+        variable_count: u32,
+    ) -> Vec<Vec<Implicant>> {
         let get_literal_count = |candidate: &Vec<Implicant>| {
             candidate.iter().fold(0, |acc, implicant| {
-                acc + implicant.get_literal_count() as u32
+                acc + implicant.get_literal_count(variable_count)
             })
         };
 

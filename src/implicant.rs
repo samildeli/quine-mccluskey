@@ -1,36 +1,27 @@
-use std::{cell::RefCell, collections::HashSet, fmt::Display, hash::Hash};
+use std::{collections::HashSet, hash::Hash};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Implicant {
-    variable_count: u8,
     value: u32,
     mask: u32,
-    was_combined: RefCell<bool>,
 }
 
 impl Implicant {
-    pub fn new(variable_count: u8, term: u32) -> Self {
+    pub fn new(term: u32) -> Self {
         Implicant {
-            variable_count,
             value: term,
             mask: 0,
-            was_combined: false.into(),
         }
     }
 
-    pub fn combine(&self, other: &Self) -> Option<Self> {
+    pub fn combine(&self, other: Self) -> Option<Self> {
         if self.mask == other.mask {
             let diff = self.value ^ other.value;
 
             if diff.count_ones() == 1 {
-                *self.was_combined.borrow_mut() = true;
-                *other.was_combined.borrow_mut() = true;
-
                 Some(Implicant {
-                    variable_count: self.variable_count,
                     value: self.value & !diff,
                     mask: self.mask | diff,
-                    was_combined: false.into(),
                 })
             } else {
                 None
@@ -42,72 +33,57 @@ impl Implicant {
 
     pub fn get_terms(&self) -> HashSet<u32> {
         fn get_terms_(value: u32, mask: u32, terms: &mut HashSet<u32>) {
-            let one_pos = mask.trailing_zeros();
+            let wildcard_index = mask.trailing_zeros();
 
-            if one_pos < 32 {
-                let mask = mask & !(1 << one_pos);
+            if wildcard_index < 32 {
+                let mask = mask & !(1 << wildcard_index);
+
                 get_terms_(value, mask, terms);
-                get_terms_(value | 1 << one_pos, mask, terms);
+                get_terms_(value | 1 << wildcard_index, mask, terms);
             } else {
                 terms.insert(value);
             }
         }
 
         let mut terms = HashSet::new();
+
         get_terms_(self.value, self.mask, &mut terms);
+
         terms
     }
 
-    pub fn get_literal_count(&self) -> u8 {
-        self.variable_count - self.mask.count_ones() as u8
-    }
-
-    pub fn was_combined(&self) -> bool {
-        *self.was_combined.borrow()
+    pub fn get_literal_count(&self, variable_count: u32) -> u32 {
+        variable_count - self.mask.count_ones()
     }
 }
 
-impl PartialEq for Implicant {
-    fn eq(&self, other: &Self) -> bool {
-        self.value == other.value && self.mask == other.mask
-    }
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-impl Eq for Implicant {}
-
-impl Hash for Implicant {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.value.hash(state);
-        self.mask.hash(state);
-    }
-}
-
-impl From<&str> for Implicant {
-    fn from(value: &str) -> Self {
-        Implicant {
-            variable_count: value.len() as u8,
-            value: u32::from_str_radix(&value.replace('-', "0"), 2).unwrap(),
-            mask: u32::from_str_radix(&value.replace('1', "0").replace('-', "1"), 2).unwrap(),
-            was_combined: false.into(),
-        }
-    }
-}
-
-impl Display for Implicant {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut str = String::new();
-
-        for i in (0..self.variable_count).rev() {
-            let value_bit = self.value >> i & 1;
-            let mask_bit = self.mask >> i & 1;
-
-            if mask_bit == 1 {
-                str.push('-');
-            } else {
-                str.push(if value_bit == 1 { '1' } else { '0' });
+    impl Implicant {
+        pub fn from_str(str: &str) -> Self {
+            Implicant {
+                value: u32::from_str_radix(&str.replace('-', "0"), 2).unwrap(),
+                mask: u32::from_str_radix(&str.replace('1', "0").replace('-', "1"), 2).unwrap(),
             }
         }
 
-        write!(f, "{}", str)
+        pub fn to_str(self, variable_count: u32) -> String {
+            let mut str = String::new();
+
+            for i in (0..variable_count).rev() {
+                let value_bit = self.value >> i & 1;
+                let mask_bit = self.mask >> i & 1;
+
+                if mask_bit == 1 {
+                    str.push('-');
+                } else {
+                    str.push(if value_bit == 1 { '1' } else { '0' });
+                }
+            }
+
+            str
+        }
     }
 }

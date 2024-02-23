@@ -35,11 +35,11 @@ impl PrimeImplicantChart {
         PrimeImplicantChart { implicants, table }
     }
 
-    pub fn solve(mut self) -> Vec<Vec<Implicant>> {
+    pub fn solve(mut self, variable_count: u32) -> Vec<Vec<Implicant>> {
         let essential_prime_implicants = self.extract_essential_prime_implicants();
 
         if !self.table.is_empty() {
-            let petrick_solutions = Petrick::solve(&self);
+            let petrick_solutions = Petrick::solve(&self, variable_count);
 
             petrick_solutions
                 .iter()

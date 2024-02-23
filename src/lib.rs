@@ -10,7 +10,7 @@ use implicant::Implicant;
 use prime_implicant_chart::PrimeImplicantChart;
 
 pub fn minimize(
-    variable_count: u8,
+    variable_count: u32,
     minterms: &[u32],
     maxterms: &[u32],
     sop: bool,
@@ -19,7 +19,7 @@ pub fn minimize(
 }
 
 fn minimize_internal(
-    variable_count: u8,
+    variable_count: u32,
     minterms: &[u32],
     maxterms: &[u32],
     sop: bool,
@@ -31,11 +31,11 @@ fn minimize_internal(
     let prime_implicants =
         find_prime_implicants(variable_count, &minterms, &maxterms, &dont_cares, sop);
     let prime_implicant_chart = PrimeImplicantChart::new(prime_implicants, &dont_cares);
-    prime_implicant_chart.solve()
+    prime_implicant_chart.solve(variable_count)
 }
 
 fn find_prime_implicants(
-    variable_count: u8,
+    variable_count: u32,
     minterms: &HashSet<u32>,
     maxterms: &HashSet<u32>,
     dont_cares: &HashSet<u32>,
@@ -69,7 +69,7 @@ fn find_prime_implicants(
 }
 
 fn get_dont_cares(
-    variable_count: u8,
+    variable_count: u32,
     minterms: &HashSet<u32>,
     maxterms: &HashSet<u32>,
 ) -> HashSet<u32> {
@@ -96,7 +96,94 @@ mod tests {
         test_minimize_internal(1..=15, Some(1));
     }
 
-    fn test_minimize_internal<R: Iterator<Item = u8>>(variable_count_range: R, count: Option<u32>) {
+    #[test]
+    fn test_find_prime_implicants() {
+        fn test(
+            variable_count: u32,
+            minterms: Vec<u32>,
+            maxterms: Vec<u32>,
+            sop: bool,
+            answer: Vec<Implicant>,
+        ) {
+            let minterms = HashSet::from_iter(minterms.iter().copied());
+            let maxterms = HashSet::from_iter(maxterms.iter().copied());
+            let dont_cares = get_dont_cares(variable_count, &minterms, &maxterms);
+
+            println!(
+                "sop: {}, variable_count: {}, minterms: {:?}, maxterms: {:?}",
+                sop, variable_count, minterms, maxterms
+            );
+
+            let result =
+                find_prime_implicants(variable_count, &minterms, &maxterms, &dont_cares, sop);
+
+            assert_eq!(
+                result.into_iter().collect::<HashSet<_>>(),
+                HashSet::from_iter(answer)
+            );
+        }
+
+        test(1, vec![], vec![0, 1], true, vec![]);
+        test(1, vec![0], vec![1], true, vec![Implicant::from_str("0")]);
+        test(1, vec![1], vec![0], true, vec![Implicant::from_str("1")]);
+        test(1, vec![0, 1], vec![], true, vec![Implicant::from_str("-")]);
+        test(1, vec![], vec![], true, vec![]);
+        test(1, vec![], vec![0], true, vec![]);
+        test(1, vec![], vec![1], true, vec![]);
+        test(1, vec![0], vec![], true, vec![Implicant::from_str("-")]);
+        test(1, vec![1], vec![], true, vec![Implicant::from_str("-")]);
+
+        test(1, vec![0, 1], vec![], false, vec![]);
+        test(1, vec![1], vec![0], false, vec![Implicant::from_str("0")]);
+        test(1, vec![0], vec![1], false, vec![Implicant::from_str("1")]);
+        test(1, vec![], vec![0, 1], false, vec![Implicant::from_str("-")]);
+        test(1, vec![], vec![], false, vec![]);
+        test(1, vec![0], vec![], false, vec![]);
+        test(1, vec![1], vec![], false, vec![]);
+        test(1, vec![], vec![0], false, vec![Implicant::from_str("-")]);
+        test(1, vec![], vec![1], false, vec![Implicant::from_str("-")]);
+
+        test(
+            2,
+            vec![0, 3],
+            vec![2],
+            true,
+            vec![Implicant::from_str("0-"), Implicant::from_str("-1")],
+        );
+
+        test(
+            3,
+            vec![1, 2, 5],
+            vec![3, 4, 7],
+            true,
+            vec![
+                Implicant::from_str("00-"),
+                Implicant::from_str("0-0"),
+                Implicant::from_str("-01"),
+                Implicant::from_str("-10"),
+            ],
+        );
+
+        test(
+            4,
+            vec![2, 4, 5, 7, 9],
+            vec![3, 6, 10, 12, 15],
+            true,
+            vec![
+                Implicant::from_str("00-0"),
+                Implicant::from_str("01-1"),
+                Implicant::from_str("10-1"),
+                Implicant::from_str("0-0-"),
+                Implicant::from_str("-00-"),
+                Implicant::from_str("--01"),
+            ],
+        );
+    }
+
+    fn test_minimize_internal<R: Iterator<Item = u32>>(
+        variable_count_range: R,
+        count: Option<u32>,
+    ) {
         for variable_count in variable_count_range {
             let term_combinations = if let Some(count) = count {
                 generate_terms_random(variable_count, count)
@@ -104,8 +191,8 @@ mod tests {
                 generate_terms_exhaustive(variable_count)
             };
 
-            for sop in [true, false] {
-                for terms in &term_combinations {
+            for terms in &term_combinations {
+                for sop in [true, false] {
                     println!(
                         "sop: {}, variable_count: {}, minterms: {:?}, maxterms: {:?}",
                         sop, variable_count, terms.0, terms.1
@@ -118,91 +205,23 @@ mod tests {
                         sop,
                     );
 
+                    println!(
+                        "{:?}",
+                        solutions
+                            .iter()
+                            .map(|solution| solution
+                                .iter()
+                                .map(|implicant| implicant.to_str(variable_count))
+                                .collect_vec())
+                            .collect_vec()
+                    );
+
                     for solution in &solutions {
                         assert!(check_solution(&terms.0, &terms.1, sop, solution));
                     }
                 }
             }
         }
-    }
-
-    #[test]
-    fn test_find_prime_implicants() {
-        fn test(
-            variable_count: u8,
-            minterms: Vec<u32>,
-            maxterms: Vec<u32>,
-            sop: bool,
-            answer: Vec<Implicant>,
-        ) {
-            let minterms = HashSet::from_iter(minterms.iter().copied());
-            let maxterms = HashSet::from_iter(maxterms.iter().copied());
-            let dont_cares = get_dont_cares(variable_count, &minterms, &maxterms);
-
-            let result =
-                find_prime_implicants(variable_count, &minterms, &maxterms, &dont_cares, sop);
-
-            assert_eq!(
-                result.into_iter().collect::<HashSet<_>>(),
-                HashSet::from_iter(answer)
-            );
-        }
-
-        test(1, vec![], vec![0, 1], true, vec![]);
-        test(1, vec![0], vec![1], true, vec![Implicant::from("0")]);
-        test(1, vec![1], vec![0], true, vec![Implicant::from("1")]);
-        test(1, vec![0, 1], vec![], true, vec![Implicant::from("-")]);
-        test(1, vec![], vec![], true, vec![]);
-        test(1, vec![], vec![0], true, vec![]);
-        test(1, vec![], vec![1], true, vec![]);
-        test(1, vec![0], vec![], true, vec![Implicant::from("-")]);
-        test(1, vec![1], vec![], true, vec![Implicant::from("-")]);
-
-        test(1, vec![0, 1], vec![], false, vec![]);
-        test(1, vec![1], vec![0], false, vec![Implicant::from("0")]);
-        test(1, vec![0], vec![1], false, vec![Implicant::from("1")]);
-        test(1, vec![], vec![0, 1], false, vec![Implicant::from("-")]);
-        test(1, vec![], vec![], false, vec![]);
-        test(1, vec![0], vec![], false, vec![]);
-        test(1, vec![1], vec![], false, vec![]);
-        test(1, vec![], vec![0], false, vec![Implicant::from("-")]);
-        test(1, vec![], vec![1], false, vec![Implicant::from("-")]);
-
-        test(
-            2,
-            vec![0, 3],
-            vec![2],
-            true,
-            vec![Implicant::from("0-"), Implicant::from("-1")],
-        );
-
-        test(
-            3,
-            vec![1, 2, 5],
-            vec![3, 4, 7],
-            true,
-            vec![
-                Implicant::from("00-"),
-                Implicant::from("0-0"),
-                Implicant::from("-01"),
-                Implicant::from("-10"),
-            ],
-        );
-
-        test(
-            4,
-            vec![2, 4, 5, 7, 9],
-            vec![3, 6, 10, 12, 15],
-            true,
-            vec![
-                Implicant::from("00-0"),
-                Implicant::from("01-1"),
-                Implicant::from("10-1"),
-                Implicant::from("0-0-"),
-                Implicant::from("-00-"),
-                Implicant::from("--01"),
-            ],
-        );
     }
 
     fn check_solution(
@@ -213,16 +232,13 @@ mod tests {
     ) -> bool {
         let terms = if sop { minterms } else { maxterms };
         let other_terms = if sop { maxterms } else { minterms };
-        let mut covered_terms = HashSet::new();
-
-        for implicant in solution {
-            covered_terms.extend(implicant.get_terms());
-        }
+        let covered_terms =
+            HashSet::from_iter(solution.iter().flat_map(|implicant| implicant.get_terms()));
 
         terms.is_subset(&covered_terms) && other_terms.is_disjoint(&covered_terms)
     }
 
-    fn generate_terms_exhaustive(variable_count: u8) -> Vec<(HashSet<u32>, HashSet<u32>)> {
+    fn generate_terms_exhaustive(variable_count: u32) -> Vec<(HashSet<u32>, HashSet<u32>)> {
         let mut generated_terms = vec![];
         let all_terms: HashSet<u32> = HashSet::from_iter(0..1 << variable_count);
 
@@ -252,7 +268,7 @@ mod tests {
         generated_terms
     }
 
-    fn generate_terms_random(variable_count: u8, count: u32) -> Vec<(HashSet<u32>, HashSet<u32>)> {
+    fn generate_terms_random(variable_count: u32, count: u32) -> Vec<(HashSet<u32>, HashSet<u32>)> {
         let mut generated_terms = vec![];
         let mut rng = rand::thread_rng();
 
