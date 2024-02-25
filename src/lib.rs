@@ -2,21 +2,39 @@ mod group;
 mod implicant;
 mod petrick;
 mod prime_implicant_chart;
+mod solution;
 
 use std::collections::HashSet;
 
 use group::Group;
 use implicant::Implicant;
+use petrick::Petrick;
 use prime_implicant_chart::PrimeImplicantChart;
+use solution::Solution;
 
-pub fn minimize(
-    variable_count: u32,
+pub fn minimize<T: AsRef<str>>(
+    variables: &[T],
     minterms: &[u32],
     maxterms: &[u32],
     sop: bool,
-) -> Vec<Vec<String>> {
-    vec![]
+) -> Vec<Solution> {
+    let variables: Vec<_> = variables
+        .iter()
+        .map(|variable| variable.as_ref().to_string())
+        .collect();
+
+    let internal_solutions = minimize_internal(variables.len() as u32, minterms, maxterms, sop);
+
+    internal_solutions
+        .into_iter()
+        .map(|solution| Solution::new(solution, &variables, sop))
+        .collect()
 }
+
+pub static DEFAULT_VARIABLES: [&str; 26] = [
+    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S",
+    "T", "U", "V", "W", "X", "Y", "Z",
+];
 
 fn minimize_internal(
     variable_count: u32,
@@ -30,8 +48,20 @@ fn minimize_internal(
 
     let prime_implicants =
         find_prime_implicants(variable_count, &minterms, &maxterms, &dont_cares, sop);
-    let prime_implicant_chart = PrimeImplicantChart::new(prime_implicants, &dont_cares);
-    prime_implicant_chart.solve(variable_count)
+    let mut prime_implicant_chart = PrimeImplicantChart::new(prime_implicants, &dont_cares);
+    let essential_prime_implicants = prime_implicant_chart.simplify();
+    let petrick_solutions = Petrick::solve(&prime_implicant_chart, variable_count);
+
+    let mut solutions = petrick_solutions
+        .iter()
+        .map(|solution| [essential_prime_implicants.as_slice(), solution].concat())
+        .collect::<Vec<_>>();
+
+    for solution in &mut solutions {
+        solution.sort_unstable_by_key(|implicant| implicant.get_literal_count(variable_count));
+    }
+
+    solutions
 }
 
 fn find_prime_implicants(
@@ -87,76 +117,109 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_minimize_internal_exhaustive() {
-        test_minimize_internal(1..=3, None);
+    fn test_minimize_exhaustive() {
+        for variable_count in 1..=3 {
+            let term_combinations = generate_terms_exhaustive(variable_count);
+
+            for terms in &term_combinations {
+                for sop in [true, false] {
+                    check_and_print_solutions(variable_count, &terms.0, &terms.1, sop);
+                }
+            }
+        }
     }
 
     #[test]
-    fn test_minimize_internal_random() {
-        test_minimize_internal(1..=15, Some(1));
+    fn test_minimize_random() {
+        for variable_count in 4..=5 {
+            let term_combinations = generate_terms_random(variable_count, 10000);
+
+            for terms in &term_combinations {
+                for sop in [true, false] {
+                    check_and_print_solutions(variable_count, &terms.0, &terms.1, sop);
+                }
+            }
+        }
     }
+
+    // #[test]
+    // fn test_minimize_specific() {
+    //     let variable_count = 1;
+    //     let sop = true;
+    //     let minterms = [];
+    //     let maxterms = [];
+
+    //     let all_terms: HashSet<u32> = HashSet::from_iter(0..1 << variable_count);
+
+    //     let maxterms: Vec<_> = all_terms
+    //         .difference(&HashSet::from_iter(minterms))
+    //         .copied()
+    //         .collect();
+
+    //     check_and_print_solutions(
+    //         variable_count,
+    //         &HashSet::from_iter(minterms),
+    //         &HashSet::from_iter(maxterms),
+    //         sop,
+    //     );
+    // }
 
     #[test]
     fn test_find_prime_implicants() {
         fn test(
             variable_count: u32,
-            minterms: Vec<u32>,
-            maxterms: Vec<u32>,
+            minterms: &[u32],
+            maxterms: &[u32],
             sop: bool,
-            answer: Vec<Implicant>,
+            answer: &[Implicant],
         ) {
             let minterms = HashSet::from_iter(minterms.iter().copied());
             let maxterms = HashSet::from_iter(maxterms.iter().copied());
             let dont_cares = get_dont_cares(variable_count, &minterms, &maxterms);
-
-            println!(
-                "sop: {}, variable_count: {}, minterms: {:?}, maxterms: {:?}",
-                sop, variable_count, minterms, maxterms
-            );
 
             let result =
                 find_prime_implicants(variable_count, &minterms, &maxterms, &dont_cares, sop);
 
             assert_eq!(
                 result.into_iter().collect::<HashSet<_>>(),
-                HashSet::from_iter(answer)
+                HashSet::from_iter(answer.iter().copied())
             );
         }
 
-        test(1, vec![], vec![0, 1], true, vec![]);
-        test(1, vec![0], vec![1], true, vec![Implicant::from_str("0")]);
-        test(1, vec![1], vec![0], true, vec![Implicant::from_str("1")]);
-        test(1, vec![0, 1], vec![], true, vec![Implicant::from_str("-")]);
-        test(1, vec![], vec![], true, vec![]);
-        test(1, vec![], vec![0], true, vec![]);
-        test(1, vec![], vec![1], true, vec![]);
-        test(1, vec![0], vec![], true, vec![Implicant::from_str("-")]);
-        test(1, vec![1], vec![], true, vec![Implicant::from_str("-")]);
+        test(1, &[], &[0, 1], true, &[]);
+        test(1, &[0], &[1], true, &[Implicant::from_str("0")]);
+        test(1, &[1], &[0], true, &[Implicant::from_str("1")]);
+        test(1, &[0, 1], &[], true, &[Implicant::from_str("-")]);
+        test(1, &[], &[], true, &[]);
+        test(1, &[], &[0], true, &[]);
+        test(1, &[], &[1], true, &[]);
+        test(1, &[0], &[], true, &[Implicant::from_str("-")]);
+        test(1, &[1], &[], true, &[Implicant::from_str("-")]);
 
-        test(1, vec![0, 1], vec![], false, vec![]);
-        test(1, vec![1], vec![0], false, vec![Implicant::from_str("0")]);
-        test(1, vec![0], vec![1], false, vec![Implicant::from_str("1")]);
-        test(1, vec![], vec![0, 1], false, vec![Implicant::from_str("-")]);
-        test(1, vec![], vec![], false, vec![]);
-        test(1, vec![0], vec![], false, vec![]);
-        test(1, vec![1], vec![], false, vec![]);
-        test(1, vec![], vec![0], false, vec![Implicant::from_str("-")]);
-        test(1, vec![], vec![1], false, vec![Implicant::from_str("-")]);
+        test(1, &[0, 1], &[], false, &[]);
+        test(1, &[1], &[0], false, &[Implicant::from_str("0")]);
+        test(1, &[0], &[1], false, &[Implicant::from_str("1")]);
+        test(1, &[], &[0, 1], false, &[Implicant::from_str("-")]);
+        test(1, &[], &[], false, &[]);
+        test(1, &[0], &[], false, &[]);
+        test(1, &[1], &[], false, &[]);
+        test(1, &[], &[0], false, &[Implicant::from_str("-")]);
+        test(1, &[], &[1], false, &[Implicant::from_str("-")]);
 
         test(
             2,
-            vec![0, 3],
-            vec![2],
+            &[0, 3],
+            &[2],
             true,
-            vec![Implicant::from_str("0-"), Implicant::from_str("-1")],
+            &[Implicant::from_str("0-"), Implicant::from_str("-1")],
         );
 
         test(
             3,
-            vec![1, 2, 5],
-            vec![3, 4, 7],
+            &[1, 2, 5],
+            &[3, 4, 7],
             true,
-            vec![
+            &[
                 Implicant::from_str("00-"),
                 Implicant::from_str("0-0"),
                 Implicant::from_str("-01"),
@@ -166,10 +229,10 @@ mod tests {
 
         test(
             4,
-            vec![2, 4, 5, 7, 9],
-            vec![3, 6, 10, 12, 15],
+            &[2, 4, 5, 7, 9],
+            &[3, 6, 10, 12, 15],
             true,
-            vec![
+            &[
                 Implicant::from_str("00-0"),
                 Implicant::from_str("01-1"),
                 Implicant::from_str("10-1"),
@@ -180,48 +243,45 @@ mod tests {
         );
     }
 
-    fn test_minimize_internal<R: Iterator<Item = u32>>(
-        variable_count_range: R,
-        count: Option<u32>,
+    fn check_and_print_solutions(
+        variable_count: u32,
+        minterms: &HashSet<u32>,
+        maxterms: &HashSet<u32>,
+        sop: bool,
     ) {
-        for variable_count in variable_count_range {
-            let term_combinations = if let Some(count) = count {
-                generate_terms_random(variable_count, count)
-            } else {
-                generate_terms_exhaustive(variable_count)
-            };
+        println!(
+            "sop: {}, variable_count: {}, minterms: {:?}, maxterms: {:?}",
+            sop, variable_count, minterms, maxterms
+        );
 
-            for terms in &term_combinations {
-                for sop in [true, false] {
-                    println!(
-                        "sop: {}, variable_count: {}, minterms: {:?}, maxterms: {:?}",
-                        sop, variable_count, terms.0, terms.1
-                    );
+        let internal_solutions = minimize_internal(
+            variable_count,
+            &Vec::from_iter(minterms.clone()),
+            &Vec::from_iter(maxterms.clone()),
+            sop,
+        );
 
-                    let solutions = minimize_internal(
-                        variable_count,
-                        &Vec::from_iter(terms.0.clone()),
-                        &Vec::from_iter(terms.1.clone()),
-                        sop,
-                    );
-
-                    println!(
-                        "{:?}",
-                        solutions
-                            .iter()
-                            .map(|solution| solution
-                                .iter()
-                                .map(|implicant| implicant.to_str(variable_count))
-                                .collect_vec())
-                            .collect_vec()
-                    );
-
-                    for solution in &solutions {
-                        assert!(check_solution(&terms.0, &terms.1, sop, solution));
-                    }
-                }
-            }
+        for solution in &internal_solutions {
+            assert!(check_solution(minterms, maxterms, sop, solution));
         }
+
+        let variables: Vec<_> = DEFAULT_VARIABLES[..variable_count as usize]
+            .iter()
+            .map(|variable| variable.to_string())
+            .collect();
+
+        let solutions: Vec<_> = internal_solutions
+            .into_iter()
+            .map(|solution| Solution::new(solution, &variables, sop))
+            .collect();
+
+        println!(
+            "{:#?}",
+            solutions
+                .iter()
+                .map(|solution| solution.to_string())
+                .collect_vec()
+        );
     }
 
     fn check_solution(

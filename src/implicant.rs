@@ -1,5 +1,7 @@
 use std::{collections::HashSet, hash::Hash};
 
+use crate::solution::Variable;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Implicant {
     value: u32,
@@ -54,6 +56,25 @@ impl Implicant {
 
     pub fn get_literal_count(&self, variable_count: u32) -> u32 {
         variable_count - self.mask.count_ones()
+    }
+
+    pub fn to_variables(self, variable_names: &[String], sop: bool) -> Vec<Variable> {
+        let mut variables = vec![];
+        let variable_count = variable_names.len();
+
+        for i in (0..variable_count).rev() {
+            let value_bit = self.value >> i & 1;
+            let mask_bit = self.mask >> i & 1;
+
+            if mask_bit != 1 {
+                let index = variable_count - i - 1;
+                let is_negated = sop && value_bit == 0 || !sop && value_bit == 1;
+
+                variables.push(Variable::new(variable_names[index].clone(), is_negated));
+            }
+        }
+
+        variables
     }
 }
 

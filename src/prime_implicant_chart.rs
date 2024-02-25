@@ -1,10 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{implicant::Implicant, petrick::Petrick};
+use crate::implicant::Implicant;
 
 pub struct PrimeImplicantChart {
     implicants: Vec<Implicant>,
-    table: Vec<Vec<bool>>,
+    rows: Vec<Vec<bool>>,
+    terms: Vec<u32>,
+    cols: Vec<Vec<bool>>,
 }
 
 impl PrimeImplicantChart {
@@ -17,10 +19,11 @@ impl PrimeImplicantChart {
 
         terms = terms.difference(dont_cares).copied().collect();
 
-        let mut table = vec![vec![false; implicants.len()]; terms.len()];
+        let mut rows = vec![vec![false; terms.len()]; implicants.len()];
+        let mut cols = vec![vec![false; implicants.len()]; terms.len()];
 
         let term_indices: HashMap<u32, usize> =
-            HashMap::from_iter(terms.into_iter().enumerate().map(|(i, term)| (term, i)));
+            HashMap::from_iter(terms.iter().enumerate().map(|(i, &term)| (term, i)));
 
         for (y, implicant) in implicants.iter().enumerate() {
             let row_terms = implicant.get_terms();
@@ -28,26 +31,61 @@ impl PrimeImplicantChart {
 
             for term in row_terms {
                 let x = *term_indices.get(term).unwrap();
-                table[x][y] = true;
+                rows[y][x] = true;
+                cols[x][y] = true;
             }
         }
 
-        PrimeImplicantChart { implicants, table }
+        PrimeImplicantChart {
+            implicants,
+            rows,
+            terms: Vec::from_iter(terms),
+            cols,
+        }
     }
 
-    pub fn solve(mut self, variable_count: u32) -> Vec<Vec<Implicant>> {
-        let essential_prime_implicants = self.extract_essential_prime_implicants();
+    pub fn simplify(&mut self) -> Vec<Implicant> {
+        #[cfg(test)]
+        println!(
+            "Simplifying {} implicants and {} terms",
+            self.implicants.len(),
+            self.terms.len()
+        );
 
-        if !self.table.is_empty() {
-            let petrick_solutions = Petrick::solve(&self, variable_count);
+        let mut essential_prime_implicants = vec![];
 
-            petrick_solutions
-                .iter()
-                .map(|solution| [essential_prime_implicants.as_slice(), solution].concat())
-                .collect()
-        } else {
-            vec![essential_prime_implicants]
+        loop {
+            let extracted_essential_prime_implicants = self.extract_essential_prime_implicants();
+            let any_essentials_extracted = !extracted_essential_prime_implicants.is_empty();
+            essential_prime_implicants.extend(extracted_essential_prime_implicants);
+
+            let any_terms_removed = self.remove_dominating_terms();
+            let any_implicants_removed = self.remove_dominated_implicants();
+
+            if !any_essentials_extracted && !any_terms_removed && !any_implicants_removed {
+                break;
+            }
         }
+
+        self.sort();
+
+        essential_prime_implicants
+    }
+
+    pub fn get_column_covering_implicants(&self) -> Vec<Vec<Implicant>> {
+        let mut column_covering_implicants = vec![];
+
+        for x in 0..self.terms.len() {
+            column_covering_implicants.push(vec![]);
+
+            for (y, &implicant) in self.implicants.iter().enumerate() {
+                if self.cols[x][y] {
+                    column_covering_implicants[x].push(implicant);
+                }
+            }
+        }
+
+        column_covering_implicants
     }
 
     fn extract_essential_prime_implicants(&mut self) -> Vec<Implicant> {
@@ -55,7 +93,7 @@ impl PrimeImplicantChart {
         let mut rows_to_extract = HashSet::new();
         let mut covered_columns = HashSet::new();
 
-        for col in &self.table {
+        for col in &self.cols {
             let mut marked_count = 0;
             let mut marked_index = usize::MAX;
 
@@ -73,7 +111,7 @@ impl PrimeImplicantChart {
             if marked_count == 1 {
                 rows_to_extract.insert(marked_index);
                 covered_columns.extend(
-                    self.table
+                    self.cols
                         .iter()
                         .enumerate()
                         .filter_map(|(x, col)| col[marked_index].then_some(x)),
@@ -85,36 +123,116 @@ impl PrimeImplicantChart {
         rows_to_extract.sort_unstable();
 
         for y in rows_to_extract.into_iter().rev() {
-            essential_prime_implicants.push(self.implicants.swap_remove(y));
-
-            for col in &mut self.table {
-                col.swap_remove(y);
-            }
+            essential_prime_implicants.push(self.remove_row(y));
         }
 
         let mut covered_columns = Vec::from_iter(covered_columns);
         covered_columns.sort_unstable();
 
-        for x in covered_columns.into_iter().rev() {
-            self.table.swap_remove(x);
+        for &x in covered_columns.iter().rev() {
+            self.remove_col(x);
         }
+
+        #[cfg(test)]
+        println!(
+            "Extracted {} implicants and removed {} terms",
+            essential_prime_implicants.len(),
+            covered_columns.len()
+        );
 
         essential_prime_implicants
     }
 
-    pub fn get_column_covering_implicants(&self) -> Vec<Vec<Implicant>> {
-        let mut column_covering_implicants: Vec<Vec<Implicant>> = vec![];
+    fn remove_dominating_terms(&mut self) -> bool {
+        let mut removed = false;
+        #[cfg(test)]
+        let mut count = 0;
 
-        for x in 0..self.table.len() {
-            column_covering_implicants.push(vec![]);
-
-            for (y, implicant) in self.implicants.iter().enumerate() {
-                if self.table[x][y] {
-                    column_covering_implicants[x].push(implicant.clone());
+        for x1 in (0..self.terms.len()).rev() {
+            for x2 in (0..self.terms.len()).rev().filter(|&x| x != x1) {
+                if is_dominating(&self.cols[x1], &self.cols[x2]) {
+                    self.remove_col(x1);
+                    removed = true;
+                    #[cfg(test)]
+                    {
+                        count += 1;
+                    }
+                    break;
                 }
             }
         }
 
-        column_covering_implicants
+        #[cfg(test)]
+        println!("Removed {} terms", count);
+
+        removed
     }
+
+    fn remove_dominated_implicants(&mut self) -> bool {
+        let mut removed = false;
+        #[cfg(test)]
+        let mut count = 0;
+
+        for y1 in (0..self.implicants.len()).rev() {
+            for y2 in (0..self.implicants.len()).rev().filter(|&y| y != y1) {
+                if is_dominating(&self.rows[y2], &self.rows[y1]) {
+                    self.remove_row(y1);
+                    removed = true;
+                    #[cfg(test)]
+                    {
+                        count += 1;
+                    }
+                    break;
+                }
+            }
+        }
+
+        #[cfg(test)]
+        println!("Removed {} implicants", count);
+
+        removed
+    }
+
+    // Sorting terms makes absorption more effective in petrick
+    fn sort(&mut self) {
+        let mut sorted_terms: Vec<_> = self.terms.iter().zip(self.cols.clone()).collect();
+        sorted_terms.sort_unstable_by(|(term1, _), (term2, _)| term1.cmp(term2));
+
+        (self.terms, self.cols) = sorted_terms.into_iter().unzip();
+
+        let mut new_rows = vec![];
+
+        for y in 0..self.implicants.len() {
+            new_rows.push(self.cols.iter().map(|col| col[y]).collect());
+        }
+
+        self.rows = new_rows;
+    }
+
+    fn remove_row(&mut self, y: usize) -> Implicant {
+        self.rows.swap_remove(y);
+
+        for col in &mut self.cols {
+            col.swap_remove(y);
+        }
+
+        self.implicants.swap_remove(y)
+    }
+
+    fn remove_col(&mut self, x: usize) -> u32 {
+        self.cols.swap_remove(x);
+
+        for row in &mut self.rows {
+            row.swap_remove(x);
+        }
+
+        self.terms.swap_remove(x)
+    }
+}
+
+fn is_dominating(marks: &[bool], other_marks: &[bool]) -> bool {
+    marks
+        .iter()
+        .zip(other_marks)
+        .all(|(&mark, other_mark)| !other_mark || mark)
 }

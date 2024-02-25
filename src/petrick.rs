@@ -15,8 +15,25 @@ impl Petrick {
             .map(SumOfProduct::new)
             .collect();
 
+        if sums.is_empty() {
+            return vec![vec![]];
+        }
+
         while sums.len() > 1 {
+            #[cfg(test)]
+            println!(
+                "Distributing {} sums ({} products)...",
+                sums.len(),
+                sums.iter().fold(0, |acc, sum| acc + sum.products.len())
+            );
             Self::distribute(&mut sums);
+
+            #[cfg(test)]
+            println!(
+                "Absorbing {} sums ({} products)...",
+                sums.len(),
+                sums.iter().fold(0, |acc, sum| acc + sum.products.len())
+            );
             Self::absorb(&mut sums);
         }
 
@@ -28,12 +45,12 @@ impl Petrick {
     fn distribute(sums: &mut Vec<SumOfProduct>) {
         let mut distributed_sums = vec![];
 
-        for i in (0..sums.len()).step_by(2) {
-            if i < sums.len() - 1 {
-                distributed_sums.push(sums[i].distribute(&sums[i + 1]));
-            } else {
-                distributed_sums.push(sums.pop().unwrap());
-            }
+        for adjacent_sums in sums.chunks_exact(2) {
+            distributed_sums.push(adjacent_sums[0].distribute(&adjacent_sums[1]));
+        }
+
+        if sums.len() % 2 == 1 {
+            distributed_sums.push(sums.pop().unwrap());
         }
 
         *sums = distributed_sums;
@@ -104,10 +121,10 @@ impl SumOfProduct {
 
     pub fn absorb(&mut self) {
         for i in (0..self.products.len()).rev() {
-            for j in (0..self.products.len() - 1).rev() {
+            for j in (0..i).rev() {
                 if let Some(product) = self.products[i].absorb(&self.products[j]) {
                     self.products[j] = product;
-                    self.products.pop();
+                    self.products.swap_remove(i);
                     break;
                 }
             }
