@@ -8,7 +8,7 @@ pub struct Solution {
 }
 
 impl Solution {
-    pub fn new(internal_solution: Vec<Implicant>, variables: &[String], sop: bool) -> Self {
+    pub(crate) fn new(internal_solution: &[Implicant], variables: &[String], sop: bool) -> Self {
         Solution {
             expression: internal_solution
                 .iter()
@@ -17,24 +17,44 @@ impl Solution {
             sop,
         }
     }
+
+    pub fn expression(&self) -> &Vec<Vec<Variable>> {
+        &self.expression
+    }
+
+    pub fn sop(&self) -> bool {
+        self.sop
+    }
+
+    pub fn is_zero(&self) -> bool {
+        if self.expression.is_empty() {
+            self.sop
+        } else if self.expression[0].is_empty() {
+            !self.sop
+        } else {
+            false
+        }
+    }
+
+    pub fn is_one(&self) -> bool {
+        if self.expression.is_empty() {
+            !self.sop
+        } else if self.expression[0].is_empty() {
+            self.sop
+        } else {
+            false
+        }
+    }
 }
 
 impl Display for Solution {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.expression.is_empty() {
-            if self.sop {
-                return write!(f, "0");
-            }
-
-            return write!(f, "1");
+        if self.is_zero() {
+            return write!(f, "0");
         }
 
-        if self.expression[0].is_empty() {
-            if self.sop {
-                return write!(f, "1");
-            }
-
-            return write!(f, "0");
+        if self.is_one() {
+            return write!(f, "1");
         }
 
         for (i, variables) in self.expression.iter().enumerate() {
@@ -69,8 +89,16 @@ pub struct Variable {
 }
 
 impl Variable {
-    pub fn new(name: String, is_negated: bool) -> Self {
+    pub(crate) fn new(name: String, is_negated: bool) -> Self {
         Variable { name, is_negated }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn is_negated(&self) -> bool {
+        self.is_negated
     }
 }
 

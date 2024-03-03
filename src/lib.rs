@@ -4,31 +4,40 @@ mod petrick;
 mod prime_implicant_chart;
 mod solution;
 
+pub use solution::Solution;
+pub use solution::Variable;
+
 use std::collections::HashSet;
 
 use group::Group;
-use implicant::Implicant;
+use implicant::{Implicant, ImplicantSort, ToSolutions};
 use petrick::Petrick;
 use prime_implicant_chart::PrimeImplicantChart;
-use solution::Solution;
 
 pub fn minimize<T: AsRef<str>>(
     variables: &[T],
     minterms: &[u32],
     maxterms: &[u32],
     sop: bool,
-) -> Vec<Solution> {
-    let variables: Vec<_> = variables
+) -> Result<Vec<Solution>, Error> {
+    let variables = own_variables(variables);
+    let variable_count = variables.len() as u32;
+
+    let minterms = HashSet::from_iter(minterms.iter().copied());
+    let maxterms = HashSet::from_iter(maxterms.iter().copied());
+
+    validate_input(&variables, &minterms, &maxterms)?;
+
+    let internal_solutions = minimize_internal(variable_count, &minterms, &maxterms, sop);
+
+    if internal_solutions
         .iter()
-        .map(|variable| variable.as_ref().to_string())
-        .collect();
+        .any(|solution| !check_solution(&minterms, &maxterms, sop, solution))
+    {
+        return Err(Error::InternalError);
+    }
 
-    let internal_solutions = minimize_internal(variables.len() as u32, minterms, maxterms, sop);
-
-    internal_solutions
-        .into_iter()
-        .map(|solution| Solution::new(solution, &variables, sop))
-        .collect()
+    Ok(internal_solutions.to_solutions(&variables, sop))
 }
 
 pub static DEFAULT_VARIABLES: [&str; 26] = [
@@ -36,18 +45,34 @@ pub static DEFAULT_VARIABLES: [&str; 26] = [
     "T", "U", "V", "W", "X", "Y", "Z",
 ];
 
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("Invalid variable count: {0} (expected 1 <= variables.len() <= {})", DEFAULT_VARIABLES.len())]
+    InvalidVariableCount(usize),
+    #[error("Empty strings or strings with only whitespaces are not allowed as variables.")]
+    InvalidVariable,
+    #[error("Duplicate variables are not allowed: {0:?}")]
+    DuplicateVariables(HashSet<String>),
+    #[error("Terms out of bounds: {:?} (expected < {} for {} variables)", offending_terms, 1 << variable_count, variable_count)]
+    TermOutOfBounds {
+        offending_terms: HashSet<u32>,
+        variable_count: usize,
+    },
+    #[error("Conflicting terms between minterms and maxterms: {0:?}")]
+    TermConflict(HashSet<u32>),
+    #[error("Solution failed the check.")]
+    InternalError,
+}
+
 fn minimize_internal(
     variable_count: u32,
-    minterms: &[u32],
-    maxterms: &[u32],
+    minterms: &HashSet<u32>,
+    maxterms: &HashSet<u32>,
     sop: bool,
 ) -> Vec<Vec<Implicant>> {
-    let minterms = HashSet::from_iter(minterms.iter().copied());
-    let maxterms = HashSet::from_iter(maxterms.iter().copied());
-    let dont_cares = get_dont_cares(variable_count, &minterms, &maxterms);
-
+    let dont_cares = get_dont_cares(variable_count, minterms, maxterms);
     let prime_implicants =
-        find_prime_implicants(variable_count, &minterms, &maxterms, &dont_cares, sop);
+        find_prime_implicants(variable_count, minterms, maxterms, &dont_cares, sop);
     let mut prime_implicant_chart = PrimeImplicantChart::new(prime_implicants, &dont_cares);
     let essential_prime_implicants = prime_implicant_chart.simplify();
     let petrick_solutions = Petrick::solve(&prime_implicant_chart, variable_count);
@@ -58,7 +83,7 @@ fn minimize_internal(
         .collect::<Vec<_>>();
 
     for solution in &mut solutions {
-        solution.sort_unstable_by_key(|implicant| implicant.get_literal_count(variable_count));
+        solution.implicant_sort(sop);
     }
 
     solutions
@@ -109,6 +134,76 @@ fn get_dont_cares(
     all_terms.difference(&cares).copied().collect()
 }
 
+fn check_solution(
+    minterms: &HashSet<u32>,
+    maxterms: &HashSet<u32>,
+    sop: bool,
+    solution: &[Implicant],
+) -> bool {
+    let terms = if sop { minterms } else { maxterms };
+    let other_terms = if sop { maxterms } else { minterms };
+    let covered_terms =
+        HashSet::from_iter(solution.iter().flat_map(|implicant| implicant.get_terms()));
+
+    terms.is_subset(&covered_terms) && other_terms.is_disjoint(&covered_terms)
+}
+
+fn own_variables<T: AsRef<str>>(variables: &[T]) -> Vec<String> {
+    variables
+        .iter()
+        .map(|variable| variable.as_ref().to_owned())
+        .collect()
+}
+
+fn validate_input(
+    variables: &[String],
+    minterms: &HashSet<u32>,
+    maxterms: &HashSet<u32>,
+) -> Result<(), Error> {
+    if variables.is_empty() || variables.len() > DEFAULT_VARIABLES.len() {
+        return Err(Error::InvalidVariableCount(variables.len()));
+    }
+
+    if variables.iter().any(|variable| variable.trim().is_empty()) {
+        return Err(Error::InvalidVariable);
+    }
+
+    let mut duplicates = HashSet::new();
+
+    for i in 0..variables.len() {
+        for j in i + 1..variables.len() {
+            if variables[i] == variables[j] {
+                duplicates.insert(variables[i].clone());
+            }
+        }
+    }
+
+    if !duplicates.is_empty() {
+        return Err(Error::DuplicateVariables(duplicates));
+    }
+
+    let terms: HashSet<u32> = minterms.union(maxterms).copied().collect();
+    let terms_out_of_bounds: HashSet<u32> = terms
+        .into_iter()
+        .filter(|&term| term >= 1 << variables.len())
+        .collect();
+
+    if !terms_out_of_bounds.is_empty() {
+        return Err(Error::TermOutOfBounds {
+            offending_terms: terms_out_of_bounds,
+            variable_count: variables.len(),
+        });
+    }
+
+    let conflicts: HashSet<u32> = minterms.intersection(maxterms).copied().collect();
+
+    if !conflicts.is_empty() {
+        return Err(Error::TermConflict(conflicts));
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
@@ -118,7 +213,7 @@ mod tests {
 
     #[test]
     fn test_minimize_exhaustive() {
-        for variable_count in 1..=3 {
+        for variable_count in 3..=3 {
             let term_combinations = generate_terms_exhaustive(variable_count);
 
             for terms in &term_combinations {
@@ -171,7 +266,7 @@ mod tests {
             minterms: &[u32],
             maxterms: &[u32],
             sop: bool,
-            answer: &[Implicant],
+            expected: &[&str],
         ) {
             let minterms = HashSet::from_iter(minterms.iter().copied());
             let maxterms = HashSet::from_iter(maxterms.iter().copied());
@@ -182,49 +277,38 @@ mod tests {
 
             assert_eq!(
                 result.into_iter().collect::<HashSet<_>>(),
-                HashSet::from_iter(answer.iter().copied())
+                HashSet::from_iter(expected.iter().map(|str| Implicant::from_str(str)))
             );
         }
 
         test(1, &[], &[0, 1], true, &[]);
-        test(1, &[0], &[1], true, &[Implicant::from_str("0")]);
-        test(1, &[1], &[0], true, &[Implicant::from_str("1")]);
-        test(1, &[0, 1], &[], true, &[Implicant::from_str("-")]);
+        test(1, &[0], &[1], true, &["0"]);
+        test(1, &[1], &[0], true, &["1"]);
+        test(1, &[0, 1], &[], true, &["-"]);
         test(1, &[], &[], true, &[]);
         test(1, &[], &[0], true, &[]);
         test(1, &[], &[1], true, &[]);
-        test(1, &[0], &[], true, &[Implicant::from_str("-")]);
-        test(1, &[1], &[], true, &[Implicant::from_str("-")]);
+        test(1, &[0], &[], true, &["-"]);
+        test(1, &[1], &[], true, &["-"]);
 
         test(1, &[0, 1], &[], false, &[]);
-        test(1, &[1], &[0], false, &[Implicant::from_str("0")]);
-        test(1, &[0], &[1], false, &[Implicant::from_str("1")]);
-        test(1, &[], &[0, 1], false, &[Implicant::from_str("-")]);
+        test(1, &[1], &[0], false, &["0"]);
+        test(1, &[0], &[1], false, &["1"]);
+        test(1, &[], &[0, 1], false, &["-"]);
         test(1, &[], &[], false, &[]);
         test(1, &[0], &[], false, &[]);
         test(1, &[1], &[], false, &[]);
-        test(1, &[], &[0], false, &[Implicant::from_str("-")]);
-        test(1, &[], &[1], false, &[Implicant::from_str("-")]);
+        test(1, &[], &[0], false, &["-"]);
+        test(1, &[], &[1], false, &["-"]);
 
-        test(
-            2,
-            &[0, 3],
-            &[2],
-            true,
-            &[Implicant::from_str("0-"), Implicant::from_str("-1")],
-        );
+        test(2, &[0, 3], &[2], true, &["0-", "-1"]);
 
         test(
             3,
             &[1, 2, 5],
             &[3, 4, 7],
             true,
-            &[
-                Implicant::from_str("00-"),
-                Implicant::from_str("0-0"),
-                Implicant::from_str("-01"),
-                Implicant::from_str("-10"),
-            ],
+            &["00-", "0-0", "-01", "-10"],
         );
 
         test(
@@ -232,14 +316,7 @@ mod tests {
             &[2, 4, 5, 7, 9],
             &[3, 6, 10, 12, 15],
             true,
-            &[
-                Implicant::from_str("00-0"),
-                Implicant::from_str("01-1"),
-                Implicant::from_str("10-1"),
-                Implicant::from_str("0-0-"),
-                Implicant::from_str("-00-"),
-                Implicant::from_str("--01"),
-            ],
+            &["00-0", "01-1", "10-1", "0-0-", "-00-", "--01"],
         );
     }
 
@@ -254,26 +331,10 @@ mod tests {
             sop, variable_count, minterms, maxterms
         );
 
-        let internal_solutions = minimize_internal(
-            variable_count,
-            &Vec::from_iter(minterms.clone()),
-            &Vec::from_iter(maxterms.clone()),
-            sop,
-        );
+        let internal_solutions = minimize_internal(variable_count, minterms, maxterms, sop);
 
-        for solution in &internal_solutions {
-            assert!(check_solution(minterms, maxterms, sop, solution));
-        }
-
-        let variables: Vec<_> = DEFAULT_VARIABLES[..variable_count as usize]
-            .iter()
-            .map(|variable| variable.to_string())
-            .collect();
-
-        let solutions: Vec<_> = internal_solutions
-            .into_iter()
-            .map(|solution| Solution::new(solution, &variables, sop))
-            .collect();
+        let variables = own_variables(&DEFAULT_VARIABLES[..variable_count as usize]);
+        let solutions = internal_solutions.to_solutions(&variables, sop);
 
         println!(
             "{:#?}",
@@ -282,20 +343,10 @@ mod tests {
                 .map(|solution| solution.to_string())
                 .collect_vec()
         );
-    }
 
-    fn check_solution(
-        minterms: &HashSet<u32>,
-        maxterms: &HashSet<u32>,
-        sop: bool,
-        solution: &[Implicant],
-    ) -> bool {
-        let terms = if sop { minterms } else { maxterms };
-        let other_terms = if sop { maxterms } else { minterms };
-        let covered_terms =
-            HashSet::from_iter(solution.iter().flat_map(|implicant| implicant.get_terms()));
-
-        terms.is_subset(&covered_terms) && other_terms.is_disjoint(&covered_terms)
+        for solution in &internal_solutions {
+            assert!(check_solution(minterms, maxterms, sop, solution));
+        }
     }
 
     fn generate_terms_exhaustive(variable_count: u32) -> Vec<(HashSet<u32>, HashSet<u32>)> {

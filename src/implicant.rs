@@ -1,6 +1,6 @@
-use std::{collections::HashSet, hash::Hash};
+use std::{cmp::Ordering, collections::HashSet, hash::Hash};
 
-use crate::solution::Variable;
+use crate::solution::{Solution, Variable};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Implicant {
@@ -75,6 +75,59 @@ impl Implicant {
         }
 
         variables
+    }
+}
+
+pub trait ImplicantSort {
+    fn implicant_sort(&mut self, sop: bool);
+}
+
+impl ImplicantSort for Vec<Implicant> {
+    fn implicant_sort(&mut self, sop: bool) {
+        self.sort_by(|impl1, impl2| {
+            let ordering = impl2.mask.count_ones().cmp(&impl1.mask.count_ones());
+
+            if ordering != Ordering::Equal {
+                return ordering;
+            }
+
+            for i in (0..32).rev() {
+                let value_bit1 = impl1.value >> i & 1;
+                let value_bit2 = impl2.value >> i & 1;
+                let mask_bit1 = impl1.mask >> i & 1;
+                let mask_bit2 = impl2.mask >> i & 1;
+
+                if mask_bit1 == 0 && mask_bit2 == 0 && value_bit1 != value_bit2 {
+                    if sop && value_bit1 == 1 && value_bit2 == 0
+                        || !sop && value_bit1 == 0 && value_bit2 == 1
+                    {
+                        return Ordering::Less;
+                    }
+
+                    return Ordering::Greater;
+                }
+
+                let ordering = mask_bit1.cmp(&mask_bit2);
+
+                if ordering != Ordering::Equal {
+                    return ordering;
+                }
+            }
+
+            Ordering::Equal
+        });
+    }
+}
+
+pub trait ToSolutions {
+    fn to_solutions(&self, variables: &[String], sop: bool) -> Vec<Solution>;
+}
+
+impl ToSolutions for Vec<Vec<Implicant>> {
+    fn to_solutions(&self, variables: &[String], sop: bool) -> Vec<Solution> {
+        self.iter()
+            .map(|solution| Solution::new(solution, variables, sop))
+            .collect()
     }
 }
 
