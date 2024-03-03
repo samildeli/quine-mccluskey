@@ -59,23 +59,23 @@ impl Display for Solution {
 
         for (i, variables) in self.expression.iter().enumerate() {
             if self.expression.len() > 1 && variables.len() > 1 {
-                write!(f, "(").unwrap();
+                write!(f, "(")?;
             }
 
             for (j, variable) in variables.iter().enumerate() {
-                write!(f, "{}", variable).unwrap();
+                write!(f, "{}", variable)?;
 
                 if j < variables.len() - 1 {
-                    write!(f, " {} ", if self.sop { "∧" } else { "∨" }).unwrap();
+                    write!(f, " {} ", if self.sop { "∧" } else { "∨" })?;
                 }
             }
 
             if self.expression.len() > 1 && variables.len() > 1 {
-                write!(f, ")").unwrap();
+                write!(f, ")")?;
             }
 
             if i < self.expression.len() - 1 {
-                write!(f, " {} ", if self.sop { "∨" } else { "∧" }).unwrap();
+                write!(f, " {} ", if self.sop { "∨" } else { "∧" })?;
             }
         }
 

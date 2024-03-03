@@ -8,6 +8,9 @@ pub use solution::Solution;
 pub use solution::Variable;
 
 use std::collections::HashSet;
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 
 use group::Group;
 use implicant::{Implicant, ImplicantSort, ToSolutions};
@@ -19,6 +22,7 @@ pub fn minimize<T: AsRef<str>>(
     minterms: &[u32],
     maxterms: &[u32],
     sop: bool,
+    timeout: Option<Duration>,
 ) -> Result<Vec<Solution>, Error> {
     let variables = own_variables(variables);
     let variable_count = variables.len() as u32;
@@ -28,14 +32,11 @@ pub fn minimize<T: AsRef<str>>(
 
     validate_input(&variables, &minterms, &maxterms)?;
 
-    let internal_solutions = minimize_internal(variable_count, &minterms, &maxterms, sop);
-
-    if internal_solutions
-        .iter()
-        .any(|solution| !check_solution(&minterms, &maxterms, sop, solution))
-    {
-        return Err(Error::InternalError);
-    }
+    let internal_solutions = if let Some(timeout) = timeout {
+        minimize_internal_with_timeout(variable_count, minterms, maxterms, sop, timeout)?
+    } else {
+        minimize_internal(variable_count, &minterms, &maxterms, sop)?
+    };
 
     Ok(internal_solutions.to_solutions(&variables, sop))
 }
@@ -62,6 +63,32 @@ pub enum Error {
     TermConflict(HashSet<u32>),
     #[error("Solution failed the check.")]
     InternalError,
+    #[error("Could not find the solution in time.")]
+    Timeout,
+}
+
+fn minimize_internal_with_timeout(
+    variable_count: u32,
+    minterms: HashSet<u32>,
+    maxterms: HashSet<u32>,
+    sop: bool,
+    timeout: Duration,
+) -> Result<Vec<Vec<Implicant>>, Error> {
+    let (sender, receiver) = mpsc::channel();
+    let timeout_sender = sender.clone();
+
+    thread::spawn(move || {
+        sender
+            .send(minimize_internal(variable_count, &minterms, &maxterms, sop))
+            .unwrap()
+    });
+
+    thread::spawn(move || {
+        thread::sleep(timeout);
+        timeout_sender.send(Err(Error::Timeout)).unwrap();
+    });
+
+    receiver.recv().unwrap()
 }
 
 fn minimize_internal(
@@ -69,7 +96,7 @@ fn minimize_internal(
     minterms: &HashSet<u32>,
     maxterms: &HashSet<u32>,
     sop: bool,
-) -> Vec<Vec<Implicant>> {
+) -> Result<Vec<Vec<Implicant>>, Error> {
     let dont_cares = get_dont_cares(variable_count, minterms, maxterms);
     let prime_implicants =
         find_prime_implicants(variable_count, minterms, maxterms, &dont_cares, sop);
@@ -83,10 +110,14 @@ fn minimize_internal(
         .collect::<Vec<_>>();
 
     for solution in &mut solutions {
+        if !check_solution(minterms, maxterms, sop, solution) {
+            return Err(Error::InternalError);
+        }
+
         solution.implicant_sort(sop);
     }
 
-    solutions
+    Ok(solutions)
 }
 
 fn find_prime_implicants(
@@ -213,7 +244,7 @@ mod tests {
 
     #[test]
     fn test_minimize_exhaustive() {
-        for variable_count in 3..=3 {
+        for variable_count in 1..=3 {
             let term_combinations = generate_terms_exhaustive(variable_count);
 
             for terms in &term_combinations {
@@ -334,7 +365,7 @@ mod tests {
         let internal_solutions = minimize_internal(variable_count, minterms, maxterms, sop);
 
         let variables = own_variables(&DEFAULT_VARIABLES[..variable_count as usize]);
-        let solutions = internal_solutions.to_solutions(&variables, sop);
+        let solutions = internal_solutions.unwrap().to_solutions(&variables, sop);
 
         println!(
             "{:#?}",
@@ -343,10 +374,6 @@ mod tests {
                 .map(|solution| solution.to_string())
                 .collect_vec()
         );
-
-        for solution in &internal_solutions {
-            assert!(check_solution(minterms, maxterms, sop, solution));
-        }
     }
 
     fn generate_terms_exhaustive(variable_count: u32) -> Vec<(HashSet<u32>, HashSet<u32>)> {

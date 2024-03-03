@@ -51,7 +51,8 @@ fn test(
             &qmc::DEFAULT_VARIABLES[..variable_count],
             minterms,
             maxterms,
-            true
+            true,
+            None
         )
         .unwrap()[0]
             .to_string(),
@@ -63,7 +64,8 @@ fn test(
             &qmc::DEFAULT_VARIABLES[..variable_count],
             minterms,
             maxterms,
-            false
+            false,
+            None
         )
         .unwrap()[0]
             .to_string(),
