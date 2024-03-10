@@ -2,7 +2,7 @@ use std::{cmp::Ordering, collections::HashSet, hash::Hash};
 
 use crate::solution::{Solution, Variable};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Implicant {
     value: u32,
     mask: u32,

@@ -144,29 +144,51 @@ impl From<SumOfProduct> for Vec<Vec<Implicant>> {
 
 #[derive(Clone)]
 struct Product {
-    implicants: HashSet<Implicant>,
+    implicants: Vec<Implicant>,
 }
 
 impl Product {
     pub fn new(implicant: Implicant) -> Self {
         Product {
-            implicants: [implicant].into(),
+            implicants: vec![implicant],
         }
     }
 
     pub fn and(&self, other: &Self) -> Self {
-        Product {
-            implicants: self.implicants.union(&other.implicants).cloned().collect(),
-        }
+        let mut implicants = [self.implicants.clone(), other.implicants.clone()].concat();
+
+        implicants.sort_unstable();
+        implicants.dedup();
+
+        Product { implicants }
     }
 
     pub fn absorb(&self, other: &Self) -> Option<Self> {
-        if self.implicants.is_subset(&other.implicants) {
+        if self.is_subset(other) {
             Some(self.clone())
-        } else if other.implicants.is_subset(&self.implicants) {
+        } else if other.is_subset(self) {
             Some(other.clone())
         } else {
             None
         }
+    }
+
+    fn is_subset(&self, other: &Self) -> bool {
+        for implicant in self.implicants.iter() {
+            let mut found = false;
+
+            for other_implicant in other.implicants.iter() {
+                if implicant == other_implicant {
+                    found = true;
+                    break;
+                }
+            }
+
+            if !found {
+                return false;
+            }
+        }
+
+        true
     }
 }
