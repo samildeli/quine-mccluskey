@@ -193,8 +193,22 @@ impl PrimeImplicantChart {
         removed
     }
 
-    // Sorting terms makes absorption more effective in petrick
     fn sort(&mut self) {
+        // Sort implicants to make the simplification deterministic.
+        let mut sorted_implicants: Vec<_> = self.implicants.iter().zip(self.rows.clone()).collect();
+        sorted_implicants.sort_unstable_by(|(impl1, _), (impl2, _)| impl1.cmp(impl2));
+
+        (self.implicants, self.rows) = sorted_implicants.into_iter().unzip();
+
+        let mut new_cols = vec![];
+
+        for x in 0..self.terms.len() {
+            new_cols.push(self.rows.iter().map(|row| row[x]).collect());
+        }
+
+        self.cols = new_cols;
+
+        // Sorting terms makes absorption more effective in petrick.
         let mut sorted_terms: Vec<_> = self.terms.iter().zip(self.cols.clone()).collect();
         sorted_terms.sort_unstable_by(|(term1, _), (term2, _)| term1.cmp(term2));
 
