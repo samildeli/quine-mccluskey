@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 use crate::implicant::Implicant;
 
+#[derive(Debug)]
 pub struct Solution {
     expression: Vec<Vec<Variable>>,
     sop: bool,
@@ -83,6 +84,7 @@ impl Display for Solution {
     }
 }
 
+#[derive(Debug)]
 pub struct Variable {
     name: String,
     is_negated: bool,
