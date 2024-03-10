@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::{implicant::Implicant, Form};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Solution {
     expression: Vec<Vec<Variable>>,
     sop: bool,
@@ -88,7 +88,7 @@ impl Display for Solution {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Variable {
     name: String,
     is_negated: bool,

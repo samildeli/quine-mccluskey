@@ -112,7 +112,7 @@ pub fn minimize_maxterms<T: AsRef<str>>(
         .collect())
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Form {
     SOP,
     POS,
@@ -123,7 +123,7 @@ pub static DEFAULT_VARIABLES: [&str; 26] = [
     "T", "U", "V", "W", "X", "Y", "Z",
 ];
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, Clone)]
 pub enum Error {
     #[error("Invalid variable count: {0} (expected 1 <= variables.len() <= {})", DEFAULT_VARIABLES.len())]
     InvalidVariableCount(usize),
