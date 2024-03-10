@@ -7,6 +7,7 @@ pub struct PrimeImplicantChart {
     rows: Vec<Vec<bool>>,
     terms: Vec<u32>,
     cols: Vec<Vec<bool>>,
+    essential_prime_implicants: Vec<Implicant>,
 }
 
 impl PrimeImplicantChart {
@@ -41,10 +42,11 @@ impl PrimeImplicantChart {
             rows,
             terms: Vec::from_iter(terms),
             cols,
+            essential_prime_implicants: vec![],
         }
     }
 
-    pub fn simplify(&mut self) -> Vec<Implicant> {
+    pub fn simplify(&mut self, only_extract: bool) -> Vec<Implicant> {
         #[cfg(test)]
         println!(
             "Simplifying {} implicants and {} terms",
@@ -52,13 +54,15 @@ impl PrimeImplicantChart {
             self.terms.len()
         );
 
-        let mut essential_prime_implicants = vec![];
+        self.sort();
+
+        if only_extract {
+            self.extract_essential_prime_implicants();
+            return self.essential_prime_implicants.clone();
+        }
 
         loop {
-            let extracted_essential_prime_implicants = self.extract_essential_prime_implicants();
-            let any_essentials_extracted = !extracted_essential_prime_implicants.is_empty();
-            essential_prime_implicants.extend(extracted_essential_prime_implicants);
-
+            let any_essentials_extracted = self.extract_essential_prime_implicants();
             let any_terms_removed = self.remove_dominating_terms();
             let any_implicants_removed = self.remove_dominated_implicants();
 
@@ -67,9 +71,7 @@ impl PrimeImplicantChart {
             }
         }
 
-        self.sort();
-
-        essential_prime_implicants
+        self.essential_prime_implicants.clone()
     }
 
     pub fn get_column_covering_implicants(&self) -> Vec<Vec<Implicant>> {
@@ -88,8 +90,8 @@ impl PrimeImplicantChart {
         column_covering_implicants
     }
 
-    fn extract_essential_prime_implicants(&mut self) -> Vec<Implicant> {
-        let mut essential_prime_implicants = vec![];
+    fn extract_essential_prime_implicants(&mut self) -> bool {
+        let mut extracted_implicants = vec![];
         let mut rows_to_extract = HashSet::new();
         let mut covered_columns = HashSet::new();
 
@@ -123,7 +125,7 @@ impl PrimeImplicantChart {
         rows_to_extract.sort_unstable();
 
         for y in rows_to_extract.into_iter().rev() {
-            essential_prime_implicants.push(self.remove_row(y));
+            extracted_implicants.push(self.remove_row(y));
         }
 
         let mut covered_columns = Vec::from_iter(covered_columns);
@@ -136,11 +138,15 @@ impl PrimeImplicantChart {
         #[cfg(test)]
         println!(
             "Extracted {} implicants and removed {} terms",
-            essential_prime_implicants.len(),
+            extracted_implicants.len(),
             covered_columns.len()
         );
 
-        essential_prime_implicants
+        let any_extracted = !extracted_implicants.is_empty();
+
+        self.essential_prime_implicants.extend(extracted_implicants);
+
+        any_extracted
     }
 
     fn remove_dominating_terms(&mut self) -> bool {

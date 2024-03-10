@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, collections::HashSet, hash::Hash};
 
-use crate::solution::{Solution, Variable};
+use crate::solution::Variable;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Implicant {
@@ -54,8 +54,8 @@ impl Implicant {
         terms
     }
 
-    pub fn get_literal_count(&self, variable_count: u32) -> u32 {
-        variable_count - self.mask.count_ones()
+    pub fn wildcard_count(&self) -> u32 {
+        self.mask.count_ones()
     }
 
     pub fn to_variables(self, variable_names: &[String], sop: bool) -> Vec<Variable> {
@@ -78,13 +78,13 @@ impl Implicant {
     }
 }
 
-pub trait ImplicantSort {
-    fn implicant_sort(&mut self, sop: bool);
+pub trait VariableSort {
+    fn variable_sort(&mut self, sop: bool);
 }
 
-impl ImplicantSort for Vec<Implicant> {
-    fn implicant_sort(&mut self, sop: bool) {
-        self.sort_by(|impl1, impl2| {
+impl VariableSort for Vec<Implicant> {
+    fn variable_sort(&mut self, sop: bool) {
+        self.sort_unstable_by(|impl1, impl2| {
             let ordering = impl2.mask.count_ones().cmp(&impl1.mask.count_ones());
 
             if ordering != Ordering::Equal {
@@ -97,7 +97,9 @@ impl ImplicantSort for Vec<Implicant> {
                 let mask_bit1 = impl1.mask >> i & 1;
                 let mask_bit2 = impl2.mask >> i & 1;
 
+                // If both bits are the same variable but one is negated and the other is not,
                 if mask_bit1 == 0 && mask_bit2 == 0 && value_bit1 != value_bit2 {
+                    // put the implicant with the non-negated variable before.
                     if sop && value_bit1 == 1 && value_bit2 == 0
                         || !sop && value_bit1 == 0 && value_bit2 == 1
                     {
@@ -107,6 +109,7 @@ impl ImplicantSort for Vec<Implicant> {
                     return Ordering::Greater;
                 }
 
+                // If only one of them is a variable, put the implicant with the variable before.
                 let ordering = mask_bit1.cmp(&mask_bit2);
 
                 if ordering != Ordering::Equal {
@@ -116,18 +119,6 @@ impl ImplicantSort for Vec<Implicant> {
 
             Ordering::Equal
         });
-    }
-}
-
-pub trait ToSolutions {
-    fn to_solutions(&self, variables: &[String], sop: bool) -> Vec<Solution>;
-}
-
-impl ToSolutions for Vec<Vec<Implicant>> {
-    fn to_solutions(&self, variables: &[String], sop: bool) -> Vec<Solution> {
-        self.iter()
-            .map(|solution| Solution::new(solution, variables, sop))
-            .collect()
     }
 }
 

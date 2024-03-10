@@ -1,14 +1,9 @@
-use std::collections::HashSet;
-
 use crate::{implicant::Implicant, prime_implicant_chart::PrimeImplicantChart};
 
 pub struct Petrick;
 
 impl Petrick {
-    pub fn solve(
-        prime_implicant_chart: &PrimeImplicantChart,
-        variable_count: u32,
-    ) -> Vec<Vec<Implicant>> {
+    pub fn solve(prime_implicant_chart: &PrimeImplicantChart) -> Vec<Vec<Implicant>> {
         let mut sums: Vec<SumOfProduct> = prime_implicant_chart
             .get_column_covering_implicants()
             .into_iter()
@@ -39,7 +34,7 @@ impl Petrick {
 
         let candidates = sums.pop().unwrap().into();
         let candidates = Self::filter_minimal_implicants(candidates);
-        Self::filter_minimal_literals(candidates, variable_count)
+        Self::filter_minimal_literals(candidates)
     }
 
     fn distribute(sums: &mut Vec<SumOfProduct>) {
@@ -75,21 +70,18 @@ impl Petrick {
             .collect()
     }
 
-    fn filter_minimal_literals(
-        candidates: Vec<Vec<Implicant>>,
-        variable_count: u32,
-    ) -> Vec<Vec<Implicant>> {
-        let get_literal_count = |candidate: &Vec<Implicant>| {
-            candidate.iter().fold(0, |acc, implicant| {
-                acc + implicant.get_literal_count(variable_count)
-            })
+    fn filter_minimal_literals(candidates: Vec<Vec<Implicant>>) -> Vec<Vec<Implicant>> {
+        let get_wildcard_count = |candidate: &Vec<Implicant>| {
+            candidate
+                .iter()
+                .fold(0, |acc, implicant| acc + implicant.wildcard_count())
         };
 
-        let min_count = candidates.iter().map(get_literal_count).min().unwrap();
+        let min_count = candidates.iter().map(get_wildcard_count).max().unwrap();
 
         candidates
             .into_iter()
-            .filter(|candidate| get_literal_count(candidate) == min_count)
+            .filter(|candidate| get_wildcard_count(candidate) == min_count)
             .collect()
     }
 }

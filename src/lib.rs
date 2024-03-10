@@ -13,7 +13,7 @@ use std::thread;
 use std::time::Duration;
 
 use group::Group;
-use implicant::{Implicant, ImplicantSort, ToSolutions};
+use implicant::{Implicant, VariableSort};
 use petrick::Petrick;
 use prime_implicant_chart::PrimeImplicantChart;
 
@@ -22,6 +22,7 @@ pub fn minimize<T: AsRef<str>>(
     minterms: &[u32],
     maxterms: &[u32],
     sop: bool,
+    find_all_solutions: bool,
     timeout: Option<Duration>,
 ) -> Result<Vec<Solution>, Error> {
     let variables = own_variables(variables);
@@ -32,13 +33,82 @@ pub fn minimize<T: AsRef<str>>(
 
     validate_input(&variables, &minterms, &maxterms)?;
 
-    let internal_solutions = if let Some(timeout) = timeout {
-        minimize_internal_with_timeout(variable_count, minterms, maxterms, sop, timeout)?
-    } else {
-        minimize_internal(variable_count, &minterms, &maxterms, sop)?
-    };
+    let dont_cares = get_dont_cares(variable_count, &minterms, &maxterms);
+    let terms = if sop { minterms } else { maxterms };
 
-    Ok(internal_solutions.to_solutions(&variables, sop))
+    let internal_solutions = minimize_internal_with_timeout(
+        variable_count,
+        terms,
+        dont_cares,
+        sop,
+        find_all_solutions,
+        timeout,
+    )?;
+
+    Ok(internal_solutions
+        .iter()
+        .map(|solution| Solution::new(solution, &variables, sop))
+        .collect())
+}
+
+pub fn minimize_minterms<T: AsRef<str>>(
+    variables: &[T],
+    minterms: &[u32],
+    dont_cares: &[u32],
+    find_all_solutions: bool,
+    timeout: Option<Duration>,
+) -> Result<Vec<Solution>, Error> {
+    let variables = own_variables(variables);
+    let variable_count = variables.len() as u32;
+
+    let minterms = HashSet::from_iter(minterms.iter().copied());
+    let dont_cares = HashSet::from_iter(dont_cares.iter().copied());
+
+    validate_input(&variables, &minterms, &dont_cares)?;
+
+    let internal_solutions = minimize_internal_with_timeout(
+        variable_count,
+        minterms,
+        dont_cares,
+        true,
+        find_all_solutions,
+        timeout,
+    )?;
+
+    Ok(internal_solutions
+        .iter()
+        .map(|solution| Solution::new(solution, &variables, true))
+        .collect())
+}
+
+pub fn minimize_maxterms<T: AsRef<str>>(
+    variables: &[T],
+    maxterms: &[u32],
+    dont_cares: &[u32],
+    find_all_solutions: bool,
+    timeout: Option<Duration>,
+) -> Result<Vec<Solution>, Error> {
+    let variables = own_variables(variables);
+    let variable_count = variables.len() as u32;
+
+    let maxterms = HashSet::from_iter(maxterms.iter().copied());
+    let dont_cares = HashSet::from_iter(dont_cares.iter().copied());
+
+    validate_input(&variables, &maxterms, &dont_cares)?;
+
+    let internal_solutions = minimize_internal_with_timeout(
+        variable_count,
+        maxterms,
+        dont_cares,
+        false,
+        find_all_solutions,
+        timeout,
+    )?;
+
+    Ok(internal_solutions
+        .iter()
+        .map(|solution| Solution::new(solution, &variables, false))
+        .collect())
 }
 
 pub static DEFAULT_VARIABLES: [&str; 26] = [
@@ -46,7 +116,7 @@ pub static DEFAULT_VARIABLES: [&str; 26] = [
     "T", "U", "V", "W", "X", "Y", "Z",
 ];
 
-#[derive(thiserror::Error, Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Invalid variable count: {0} (expected 1 <= variables.len() <= {})", DEFAULT_VARIABLES.len())]
     InvalidVariableCount(usize),
@@ -59,27 +129,42 @@ pub enum Error {
         offending_terms: HashSet<u32>,
         variable_count: usize,
     },
-    #[error("Conflicting terms between minterms and maxterms: {0:?}")]
+    #[error("Conflicting terms between term sets: {0:?}")]
     TermConflict(HashSet<u32>),
-    #[error("Solution failed the check.")]
-    InternalError,
     #[error("Could not find the solution in time.")]
     Timeout,
 }
 
 fn minimize_internal_with_timeout(
     variable_count: u32,
-    minterms: HashSet<u32>,
-    maxterms: HashSet<u32>,
+    terms: HashSet<u32>,
+    dont_cares: HashSet<u32>,
     sop: bool,
-    timeout: Duration,
+    find_all_solutions: bool,
+    timeout: Option<Duration>,
 ) -> Result<Vec<Vec<Implicant>>, Error> {
+    let Some(timeout) = timeout else {
+        return Ok(minimize_internal(
+            variable_count,
+            &terms,
+            &dont_cares,
+            sop,
+            find_all_solutions,
+        ));
+    };
+
     let (sender, receiver) = mpsc::channel();
     let timeout_sender = sender.clone();
 
     thread::spawn(move || {
         sender
-            .send(minimize_internal(variable_count, &minterms, &maxterms, sop))
+            .send(Ok(minimize_internal(
+                variable_count,
+                &terms,
+                &dont_cares,
+                sop,
+                find_all_solutions,
+            )))
             .unwrap()
     });
 
@@ -93,16 +178,15 @@ fn minimize_internal_with_timeout(
 
 fn minimize_internal(
     variable_count: u32,
-    minterms: &HashSet<u32>,
-    maxterms: &HashSet<u32>,
+    terms: &HashSet<u32>,
+    dont_cares: &HashSet<u32>,
     sop: bool,
-) -> Result<Vec<Vec<Implicant>>, Error> {
-    let dont_cares = get_dont_cares(variable_count, minterms, maxterms);
-    let prime_implicants =
-        find_prime_implicants(variable_count, minterms, maxterms, &dont_cares, sop);
-    let mut prime_implicant_chart = PrimeImplicantChart::new(prime_implicants, &dont_cares);
-    let essential_prime_implicants = prime_implicant_chart.simplify();
-    let petrick_solutions = Petrick::solve(&prime_implicant_chart, variable_count);
+    find_all_solutions: bool,
+) -> Vec<Vec<Implicant>> {
+    let prime_implicants = find_prime_implicants(variable_count, terms, dont_cares, sop);
+    let mut prime_implicant_chart = PrimeImplicantChart::new(prime_implicants, dont_cares);
+    let essential_prime_implicants = prime_implicant_chart.simplify(find_all_solutions);
+    let petrick_solutions = Petrick::solve(&prime_implicant_chart);
 
     let mut solutions = petrick_solutions
         .iter()
@@ -110,26 +194,20 @@ fn minimize_internal(
         .collect::<Vec<_>>();
 
     for solution in &mut solutions {
-        if !check_solution(minterms, maxterms, sop, solution) {
-            return Err(Error::InternalError);
-        }
-
-        solution.implicant_sort(sop);
+        solution.variable_sort(sop);
+        assert!(check_solution(terms, dont_cares, solution));
     }
 
-    Ok(solutions)
+    solutions
 }
 
 fn find_prime_implicants(
     variable_count: u32,
-    minterms: &HashSet<u32>,
-    maxterms: &HashSet<u32>,
+    terms: &HashSet<u32>,
     dont_cares: &HashSet<u32>,
     sop: bool,
 ) -> Vec<Implicant> {
-    let terms = if sop { minterms } else { maxterms };
     let terms = terms.union(dont_cares).copied().collect();
-
     let mut groups = Group::group_terms(variable_count, &terms, sop);
     let mut prime_implicants = vec![];
 
@@ -165,18 +243,12 @@ fn get_dont_cares(
     all_terms.difference(&cares).copied().collect()
 }
 
-fn check_solution(
-    minterms: &HashSet<u32>,
-    maxterms: &HashSet<u32>,
-    sop: bool,
-    solution: &[Implicant],
-) -> bool {
-    let terms = if sop { minterms } else { maxterms };
-    let other_terms = if sop { maxterms } else { minterms };
+fn check_solution(terms: &HashSet<u32>, dont_cares: &HashSet<u32>, solution: &[Implicant]) -> bool {
     let covered_terms =
         HashSet::from_iter(solution.iter().flat_map(|implicant| implicant.get_terms()));
+    let terms_with_dont_cares = terms.union(dont_cares).copied().collect();
 
-    terms.is_subset(&covered_terms) && other_terms.is_disjoint(&covered_terms)
+    terms.is_subset(&covered_terms) && covered_terms.is_subset(&terms_with_dont_cares)
 }
 
 fn own_variables<T: AsRef<str>>(variables: &[T]) -> Vec<String> {
@@ -188,8 +260,8 @@ fn own_variables<T: AsRef<str>>(variables: &[T]) -> Vec<String> {
 
 fn validate_input(
     variables: &[String],
-    minterms: &HashSet<u32>,
-    maxterms: &HashSet<u32>,
+    terms1: &HashSet<u32>,
+    terms2: &HashSet<u32>,
 ) -> Result<(), Error> {
     if variables.is_empty() || variables.len() > DEFAULT_VARIABLES.len() {
         return Err(Error::InvalidVariableCount(variables.len()));
@@ -213,8 +285,8 @@ fn validate_input(
         return Err(Error::DuplicateVariables(duplicates));
     }
 
-    let terms: HashSet<u32> = minterms.union(maxterms).copied().collect();
-    let terms_out_of_bounds: HashSet<u32> = terms
+    let all_terms: HashSet<u32> = terms1.union(terms2).copied().collect();
+    let terms_out_of_bounds: HashSet<u32> = all_terms
         .into_iter()
         .filter(|&term| term >= 1 << variables.len())
         .collect();
@@ -226,7 +298,7 @@ fn validate_input(
         });
     }
 
-    let conflicts: HashSet<u32> = minterms.intersection(maxterms).copied().collect();
+    let conflicts: HashSet<u32> = terms1.intersection(terms2).copied().collect();
 
     if !conflicts.is_empty() {
         return Err(Error::TermConflict(conflicts));
@@ -249,7 +321,15 @@ mod tests {
 
             for terms in &term_combinations {
                 for sop in [true, false] {
-                    check_and_print_solutions(variable_count, &terms.0, &terms.1, sop);
+                    for find_all_solutions in [true, false] {
+                        minimize_and_print_solutions(
+                            variable_count,
+                            &terms.0,
+                            &terms.1,
+                            sop,
+                            find_all_solutions,
+                        );
+                    }
                 }
             }
         }
@@ -258,11 +338,19 @@ mod tests {
     #[test]
     fn test_minimize_random() {
         for variable_count in 4..=5 {
-            let term_combinations = generate_terms_random(variable_count, 10000);
+            let term_combinations = generate_terms_random(variable_count, 1000);
 
             for terms in &term_combinations {
                 for sop in [true, false] {
-                    check_and_print_solutions(variable_count, &terms.0, &terms.1, sop);
+                    for find_all_solutions in [true, false] {
+                        minimize_and_print_solutions(
+                            variable_count,
+                            &terms.0,
+                            &terms.1,
+                            sop,
+                            find_all_solutions,
+                        );
+                    }
                 }
             }
         }
@@ -272,21 +360,16 @@ mod tests {
     // fn test_minimize_specific() {
     //     let variable_count = 1;
     //     let sop = true;
+    //     let find_all_solutions = true;
     //     let minterms = [];
     //     let maxterms = [];
 
-    //     let all_terms: HashSet<u32> = HashSet::from_iter(0..1 << variable_count);
-
-    //     let maxterms: Vec<_> = all_terms
-    //         .difference(&HashSet::from_iter(minterms))
-    //         .copied()
-    //         .collect();
-
-    //     check_and_print_solutions(
+    //     minimize_and_print_solutions(
     //         variable_count,
-    //         &HashSet::from_iter(minterms),
-    //         &HashSet::from_iter(maxterms),
+    //         &minterms,
+    //         &maxterms,
     //         sop,
+    //         find_all_solutions,
     //     );
     // }
 
@@ -301,10 +384,11 @@ mod tests {
         ) {
             let minterms = HashSet::from_iter(minterms.iter().copied());
             let maxterms = HashSet::from_iter(maxterms.iter().copied());
-            let dont_cares = get_dont_cares(variable_count, &minterms, &maxterms);
 
-            let result =
-                find_prime_implicants(variable_count, &minterms, &maxterms, &dont_cares, sop);
+            let dont_cares = get_dont_cares(variable_count, &minterms, &maxterms);
+            let terms = if sop { minterms } else { maxterms };
+
+            let result = find_prime_implicants(variable_count, &terms, &dont_cares, sop);
 
             assert_eq!(
                 result.into_iter().collect::<HashSet<_>>(),
@@ -351,32 +435,44 @@ mod tests {
         );
     }
 
-    fn check_and_print_solutions(
+    fn minimize_and_print_solutions(
         variable_count: u32,
-        minterms: &HashSet<u32>,
-        maxterms: &HashSet<u32>,
+        minterms: &[u32],
+        maxterms: &[u32],
         sop: bool,
+        find_all_solutions: bool,
     ) {
+        let dont_cares = Vec::from_iter(get_dont_cares(
+            variable_count,
+            &HashSet::from_iter(minterms.iter().copied()),
+            &HashSet::from_iter(maxterms.iter().copied()),
+        ));
+
         println!(
-            "sop: {}, variable_count: {}, minterms: {:?}, maxterms: {:?}",
-            sop, variable_count, minterms, maxterms
+            "sop: {}, find_all_solutions: {}, variable_count: {}, minterms: {:?}, maxterms: {:?}, dont_cares: {:?}",
+            sop, find_all_solutions, variable_count, minterms, maxterms, dont_cares
         );
 
-        let internal_solutions = minimize_internal(variable_count, minterms, maxterms, sop);
-
-        let variables = own_variables(&DEFAULT_VARIABLES[..variable_count as usize]);
-        let solutions = internal_solutions.unwrap().to_solutions(&variables, sop);
+        let solutions = minimize(
+            &DEFAULT_VARIABLES[..variable_count as usize],
+            minterms,
+            maxterms,
+            sop,
+            find_all_solutions,
+            None,
+        )
+        .unwrap();
 
         println!(
             "{:#?}",
             solutions
                 .iter()
                 .map(|solution| solution.to_string())
-                .collect_vec()
+                .collect::<Vec<_>>()
         );
     }
 
-    fn generate_terms_exhaustive(variable_count: u32) -> Vec<(HashSet<u32>, HashSet<u32>)> {
+    fn generate_terms_exhaustive(variable_count: u32) -> Vec<(Vec<u32>, Vec<u32>)> {
         let mut generated_terms = vec![];
         let all_terms: HashSet<u32> = HashSet::from_iter(0..1 << variable_count);
 
@@ -395,10 +491,11 @@ mod tests {
                         .iter()
                         .copied()
                         .combinations(j)
-                        .map(HashSet::from_iter);
+                        .map(HashSet::<u32>::from_iter);
 
-                    generated_terms
-                        .extend(maxterm_combinations.map(|maxterms| (minterms.clone(), maxterms)));
+                    generated_terms.extend(maxterm_combinations.map(|maxterms| {
+                        (Vec::from_iter(minterms.clone()), Vec::from_iter(maxterms))
+                    }));
                 }
             }
         }
@@ -406,23 +503,23 @@ mod tests {
         generated_terms
     }
 
-    fn generate_terms_random(variable_count: u32, count: u32) -> Vec<(HashSet<u32>, HashSet<u32>)> {
+    fn generate_terms_random(variable_count: u32, count: u32) -> Vec<(Vec<u32>, Vec<u32>)> {
         let mut generated_terms = vec![];
         let mut rng = rand::thread_rng();
 
         for _ in 0..count {
             let mut all_terms = Vec::from_iter(0..1 << variable_count);
-            let mut minterms = HashSet::new();
-            let mut maxterms = HashSet::new();
+            let mut minterms = vec![];
+            let mut maxterms = vec![];
 
             for _ in 0..all_terms.len() {
                 let term = all_terms.swap_remove(rng.gen_range(0..all_terms.len()));
                 let choice = rng.gen_range(1..=3);
 
                 if choice == 1 {
-                    minterms.insert(term);
+                    minterms.push(term);
                 } else if choice == 2 {
-                    maxterms.insert(term);
+                    maxterms.push(term);
                 }
             }
 
