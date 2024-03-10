@@ -52,7 +52,7 @@ fn timeout() {
         &qmc::DEFAULT_VARIABLES[..10],
         TERMS1,
         TERMS2,
-        true,
+        qmc::SOP,
         false,
         Some(Duration::from_secs(1)),
     )

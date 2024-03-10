@@ -79,7 +79,7 @@ fn test(
     );
 
     assert_eq!(
-        qmc::minimize(variables, minterms, maxterms, true, false, None)
+        qmc::minimize(variables, minterms, maxterms, qmc::SOP, false, None)
             .unwrap()
             .pop()
             .unwrap()
@@ -97,7 +97,7 @@ fn test(
     );
 
     assert_eq!(
-        qmc::minimize(variables, minterms, maxterms, true, true, None)
+        qmc::minimize(variables, minterms, maxterms, qmc::SOP, true, None)
             .unwrap()
             .pop()
             .unwrap()
@@ -115,7 +115,7 @@ fn test(
     );
 
     assert_eq!(
-        qmc::minimize(variables, minterms, maxterms, false, false, None)
+        qmc::minimize(variables, minterms, maxterms, qmc::POS, false, None)
             .unwrap()
             .pop()
             .unwrap()
@@ -133,7 +133,7 @@ fn test(
     );
 
     assert_eq!(
-        qmc::minimize(variables, minterms, maxterms, false, true, None)
+        qmc::minimize(variables, minterms, maxterms, qmc::POS, true, None)
             .unwrap()
             .pop()
             .unwrap()

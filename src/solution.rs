@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::implicant::Implicant;
+use crate::{implicant::Implicant, Form};
 
 #[derive(Debug)]
 pub struct Solution {
@@ -23,8 +23,12 @@ impl Solution {
         &self.expression
     }
 
-    pub fn sop(&self) -> bool {
-        self.sop
+    pub fn form(&self) -> Form {
+        if self.sop {
+            Form::SOP
+        } else {
+            Form::POS
+        }
     }
 
     pub fn is_zero(&self) -> bool {

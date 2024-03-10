@@ -6,6 +6,7 @@ mod solution;
 
 pub use solution::Solution;
 pub use solution::Variable;
+pub use Form::{POS, SOP};
 
 use std::collections::HashSet;
 use std::sync::mpsc;
@@ -21,7 +22,7 @@ pub fn minimize<T: AsRef<str>>(
     variables: &[T],
     minterms: &[u32],
     maxterms: &[u32],
-    sop: bool,
+    form: Form,
     find_all_solutions: bool,
     timeout: Option<Duration>,
 ) -> Result<Vec<Solution>, Error> {
@@ -34,20 +35,20 @@ pub fn minimize<T: AsRef<str>>(
     validate_input(&variables, &minterms, &maxterms)?;
 
     let dont_cares = get_dont_cares(variable_count, &minterms, &maxterms);
-    let terms = if sop { minterms } else { maxterms };
+    let terms = if form == SOP { minterms } else { maxterms };
 
     let internal_solutions = minimize_internal_with_timeout(
         variable_count,
         terms,
         dont_cares,
-        sop,
+        form == SOP,
         find_all_solutions,
         timeout,
     )?;
 
     Ok(internal_solutions
         .iter()
-        .map(|solution| Solution::new(solution, &variables, sop))
+        .map(|solution| Solution::new(solution, &variables, form == SOP))
         .collect())
 }
 
@@ -109,6 +110,12 @@ pub fn minimize_maxterms<T: AsRef<str>>(
         .iter()
         .map(|solution| Solution::new(solution, &variables, false))
         .collect())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Form {
+    SOP,
+    POS,
 }
 
 pub static DEFAULT_VARIABLES: [&str; 26] = [
@@ -457,7 +464,7 @@ mod tests {
             &DEFAULT_VARIABLES[..variable_count as usize],
             minterms,
             maxterms,
-            sop,
+            if sop { SOP } else { POS },
             find_all_solutions,
             None,
         )
