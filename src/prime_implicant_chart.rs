@@ -181,7 +181,10 @@ impl PrimeImplicantChart {
 
         for y1 in (0..self.implicants.len()).rev() {
             for y2 in (0..self.implicants.len()).rev().filter(|&y| y != y1) {
-                if is_dominating(&self.rows[y2], &self.rows[y1]) {
+                if is_dominating(&self.rows[y2], &self.rows[y1])
+                    // Only remove if it has more or an equal number of literals.
+                    && self.implicants[y1].wildcard_count() <= self.implicants[y2].wildcard_count()
+                {
                     self.remove_row(y1);
                     removed = true;
                     #[cfg(test)]
