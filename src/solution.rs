@@ -7,6 +7,11 @@ use crate::{
     implicant::Implicant,
     Form::{self, POS, SOP},
 };
+
+/// A minimized boolean expression.
+///
+/// If you use [`Solution::expression`], make sure to first handle the cases
+/// where the expression equals 0 or 1 using [`Solution::is_zero`] and [`Solution::is_one`].
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Solution {
@@ -25,6 +30,7 @@ impl Solution {
         }
     }
 
+    /// Returns a list of products if the expression is in [`SOP`] form, or a list of sums if the expression is in [`POS`] form.
     pub fn expression(&self) -> &[Vec<Variable>] {
         &self.expression
     }
@@ -94,6 +100,7 @@ impl Display for Solution {
     }
 }
 
+/// A variable as part of a [`Solution`].
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Variable {

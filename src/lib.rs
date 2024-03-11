@@ -1,3 +1,34 @@
+//! Boolean function minimizer based on [Quine-McCluskey algorithm](https://en.wikipedia.org/wiki/Quine%E2%80%93McCluskey_algorithm).
+//!
+//! # Usage
+//!
+//! ````
+//! use quine_mccluskey as qmc;
+//!
+//! let mut solutions = qmc::minimize(
+//!     &qmc::DEFAULT_VARIABLES[..3],
+//!     &[0, 5],        // minterms
+//!     &[1, 3, 4, 6],  // maxterms
+//!     qmc::SOP,
+//!     false,
+//!     None
+//! )
+//! .unwrap();
+//!
+//! assert_eq!(
+//!     solutions.pop().unwrap().to_string(),
+//!     "(A ∧ C) ∨ (~A ∧ ~C)"
+//! );
+//! ````
+//!
+//! [`minimize`] is sufficient for all use cases. But also check [`minimize_minterms`] and
+//! [`minimize_maxterms`] to see if they are more suitable for your use case.
+//!
+//! # Feature flags
+//!
+//! * `serde` -- Derives the [`Serialize`] and [`Deserialize`] traits for structs and enums.
+//!
+
 mod group;
 mod implicant;
 mod petrick;
@@ -6,6 +37,7 @@ mod solution;
 
 pub use solution::Solution;
 pub use solution::Variable;
+#[doc(hidden)]
 pub use Form::{POS, SOP};
 
 use std::collections::HashSet;
@@ -21,6 +53,76 @@ use implicant::{Implicant, VariableSort};
 use petrick::Petrick;
 use prime_implicant_chart::PrimeImplicantChart;
 
+/// Minimizes the boolean function represented by the given `minterms` and `maxterms`.
+///
+/// Returns a list of equally minimal boolean expressions.
+///
+/// `minterms` represent the terms whose output is 1 and `maxterms` represent the terms whose output is 0.
+/// The rest of the terms are inferred to be don't care conditions.
+///
+/// `form` determines whether the minimized expression is of the form [`SOP`] (Sum of Products) or [`POS`] (Product of Sums).
+///
+/// If `find_all_solutions` is `true`, prime implicant chart simplification based on row/column dominance step will be skipped
+/// and all solutions will be returned. This on average makes the algorithm less efficient and more likely to get stuck.
+///
+/// If `timeout` is specified, the function will return [`Error::Timeout`] if the solution is not found within the given time.
+///
+/// # Example
+///
+/// Let's minimize the boolean function expressed by the following truth table:
+///
+/// | A | B | C | Output |
+/// |:-:|:-:|:-:|:------:|
+/// | 0 | 0 | 0 | 1      |
+/// | 0 | 0 | 1 | 0      |
+/// | 0 | 1 | 0 | X      |
+/// | 0 | 1 | 1 | 0      |
+/// | 1 | 0 | 0 | 0      |
+/// | 1 | 0 | 1 | 1      |
+/// | 1 | 1 | 0 | 0      |
+/// | 1 | 1 | 1 | X      |
+///
+/// In [`SOP`] form:
+///
+/// ```
+/// use quine_mccluskey as qmc;
+///
+/// let mut solutions = qmc::minimize(
+///     &qmc::DEFAULT_VARIABLES[..3],
+///     &[0, 5],
+///     &[1, 3, 4, 6],
+///     qmc::SOP,
+///     false,
+///     None
+/// )
+/// .unwrap();
+///
+/// assert_eq!(
+///     solutions.pop().unwrap().to_string(),
+///     "(A ∧ C) ∨ (~A ∧ ~C)"
+/// );
+///
+/// ```
+///
+/// And in [`POS`] form:
+///
+/// ```
+/// # use quine_mccluskey as qmc;
+/// let mut solutions = qmc::minimize(
+///     &qmc::DEFAULT_VARIABLES[..3],
+///     &[0, 5],
+///     &[1, 3, 4, 6],
+///     qmc::POS,
+///     false,
+///     None
+/// )
+/// .unwrap();
+///
+/// assert_eq!(
+///     solutions.pop().unwrap().to_string(),
+///     "(A ∨ ~C) ∧ (~A ∨ C)"
+/// );
+/// ````
 pub fn minimize<T: AsRef<str>>(
     variables: &[T],
     minterms: &[u32],
@@ -55,6 +157,43 @@ pub fn minimize<T: AsRef<str>>(
         .collect())
 }
 
+/// Minimizes the boolean function represented by the given `minterms` and `dont_cares`.
+///
+/// The only other difference to [`minimize`] is that it doesn't take an argument for form,
+/// instead always returns in [`SOP`] form.
+///
+/// # Example
+///
+/// Let's minimize the boolean function expressed by the following truth table:
+///
+/// | A | B | C | Output |
+/// |:-:|:-:|:-:|:------:|
+/// | 0 | 0 | 0 | 1      |
+/// | 0 | 0 | 1 | 0      |
+/// | 0 | 1 | 0 | X      |
+/// | 0 | 1 | 1 | 0      |
+/// | 1 | 0 | 0 | 0      |
+/// | 1 | 0 | 1 | 1      |
+/// | 1 | 1 | 0 | 0      |
+/// | 1 | 1 | 1 | X      |
+///
+/// ```
+/// use quine_mccluskey as qmc;
+///
+/// let mut solutions = qmc::minimize_minterms(
+///     &qmc::DEFAULT_VARIABLES[..3],
+///     &[0, 5],
+///     &[2, 7],
+///     false,
+///     None
+/// )
+/// .unwrap();
+///
+/// assert_eq!(
+///     solutions.pop().unwrap().to_string(),
+///     "(A ∧ C) ∨ (~A ∧ ~C)"
+/// );
+/// ````
 pub fn minimize_minterms<T: AsRef<str>>(
     variables: &[T],
     minterms: &[u32],
@@ -85,6 +224,43 @@ pub fn minimize_minterms<T: AsRef<str>>(
         .collect())
 }
 
+/// Minimizes the boolean function represented by the given `maxterms` and `dont_cares`.
+///
+/// The only other difference to [`minimize`] is that it doesn't take an argument for form,
+/// instead always returns in [`POS`] form.
+///
+/// # Example
+///
+/// Let's minimize the boolean function expressed by the following truth table:
+///
+/// | A | B | C | Output |
+/// |:-:|:-:|:-:|:------:|
+/// | 0 | 0 | 0 | 1      |
+/// | 0 | 0 | 1 | 0      |
+/// | 0 | 1 | 0 | X      |
+/// | 0 | 1 | 1 | 0      |
+/// | 1 | 0 | 0 | 0      |
+/// | 1 | 0 | 1 | 1      |
+/// | 1 | 1 | 0 | 0      |
+/// | 1 | 1 | 1 | X      |
+///
+/// ```
+/// use quine_mccluskey as qmc;
+///
+/// let mut solutions = qmc::minimize_maxterms(
+///     &qmc::DEFAULT_VARIABLES[..3],
+///     &[1, 3, 4, 6],
+///     &[2, 7],
+///     false,
+///     None
+/// )
+/// .unwrap();
+///
+/// assert_eq!(
+///     solutions.pop().unwrap().to_string(),
+///     "(A ∨ ~C) ∧ (~A ∨ C)"
+/// );
+/// ````
 pub fn minimize_maxterms<T: AsRef<str>>(
     variables: &[T],
     maxterms: &[u32],
@@ -115,34 +291,45 @@ pub fn minimize_maxterms<T: AsRef<str>>(
         .collect())
 }
 
+/// The form of a boolean expression.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Form {
+    /// Sum of Products
     SOP,
+    /// Product of Sums
     POS,
 }
 
+/// All letters of the English alphabet in uppercase.
 pub static DEFAULT_VARIABLES: [&str; 26] = [
     "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S",
     "T", "U", "V", "W", "X", "Y", "Z",
 ];
 
+/// Error types for bad input and timeout.
 #[derive(Debug, thiserror::Error, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Error {
+    /// The number of variables was less than 1 or greater than `DEFAULT_VARIABLES.len()`.
     #[error("Invalid variable count: {0} (expected 1 <= variables.len() <= {})", DEFAULT_VARIABLES.len())]
     InvalidVariableCount(usize),
+    /// Variable was empty or only contained whitespaces.
     #[error("Empty strings or strings with only whitespaces are not allowed as variables.")]
     InvalidVariable,
+    /// There were duplicate variables.
     #[error("Duplicate variables are not allowed: {0:?}")]
     DuplicateVariables(HashSet<String>),
+    /// There were terms out of bounds for the given number of variables.
     #[error("Terms out of bounds: {:?} (expected < {} for {} variables)", offending_terms, 1 << variable_count, variable_count)]
     TermOutOfBounds {
         offending_terms: HashSet<u32>,
         variable_count: usize,
     },
+    /// There were conflicting terms between the given term sets.
     #[error("Conflicting terms between term sets: {0:?}")]
     TermConflict(HashSet<u32>),
+    /// Could not find the solution in time.
     #[error("Could not find the solution in time.")]
     Timeout,
 }
