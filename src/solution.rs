@@ -1,7 +1,9 @@
 use std::fmt::Display;
 
-use crate::{implicant::Implicant, Form};
-
+use crate::{
+    implicant::Implicant,
+    Form::{self, POS, SOP},
+};
 #[derive(Debug, Clone)]
 pub struct Solution {
     expression: Vec<Vec<Variable>>,
@@ -19,15 +21,15 @@ impl Solution {
         }
     }
 
-    pub fn expression(&self) -> &Vec<Vec<Variable>> {
+    pub fn expression(&self) -> &[Vec<Variable>] {
         &self.expression
     }
 
     pub fn form(&self) -> Form {
         if self.sop {
-            Form::SOP
+            SOP
         } else {
-            Form::POS
+            POS
         }
     }
 
