@@ -13,6 +13,9 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 use group::Group;
 use implicant::{Implicant, VariableSort};
 use petrick::Petrick;
@@ -113,6 +116,7 @@ pub fn minimize_maxterms<T: AsRef<str>>(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Form {
     SOP,
     POS,
@@ -124,6 +128,7 @@ pub static DEFAULT_VARIABLES: [&str; 26] = [
 ];
 
 #[derive(Debug, thiserror::Error, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Error {
     #[error("Invalid variable count: {0} (expected 1 <= variables.len() <= {})", DEFAULT_VARIABLES.len())]
     InvalidVariableCount(usize),

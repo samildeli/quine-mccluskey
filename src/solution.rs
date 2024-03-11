@@ -1,10 +1,14 @@
 use std::fmt::Display;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 use crate::{
     implicant::Implicant,
     Form::{self, POS, SOP},
 };
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Solution {
     expression: Vec<Vec<Variable>>,
     sop: bool,
@@ -91,6 +95,7 @@ impl Display for Solution {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Variable {
     name: String,
     is_negated: bool,
