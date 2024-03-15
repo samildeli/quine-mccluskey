@@ -314,8 +314,8 @@ pub enum Error {
     /// The number of variables was less than 1 or greater than `DEFAULT_VARIABLES.len()`.
     #[error("Invalid variable count: {0} (expected 1 <= variables.len() <= {})", DEFAULT_VARIABLES.len())]
     InvalidVariableCount(usize),
-    /// Variable was empty or only contained whitespaces.
-    #[error("Empty strings or strings with only whitespaces are not allowed as variables.")]
+    /// Variable was 0, 1, empty string or string with leading or trailing whitespaces.
+    #[error("0, 1, empty string and strings with leading or trailing whitespaces are not allowed as variables.")]
     InvalidVariable,
     /// There were duplicate variables.
     #[error("Duplicate variables are not allowed: {0:?}")]
@@ -466,8 +466,11 @@ fn validate_input(
         return Err(Error::InvalidVariableCount(variables.len()));
     }
 
-    if variables.iter().any(|variable| variable.trim().is_empty()) {
-        return Err(Error::InvalidVariable);
+    for variable in variables {
+        if variable == "0" || variable == "1" || variable.is_empty() || variable != variable.trim()
+        {
+            return Err(Error::InvalidVariable);
+        }
     }
 
     let mut duplicates = HashSet::new();

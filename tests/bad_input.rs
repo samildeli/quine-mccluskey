@@ -47,6 +47,42 @@ fn too_many_variables3() {
 
 #[test]
 #[should_panic(expected = "InvalidVariable")]
+fn variable_is_0() {
+    qmc::minimize(&["0"], &[], &[], qmc::SOP, false, None).unwrap();
+}
+
+#[test]
+#[should_panic(expected = "InvalidVariable")]
+fn variable_is_0_2() {
+    qmc::minimize_minterms(&["0"], &[], &[], false, None).unwrap();
+}
+
+#[test]
+#[should_panic(expected = "InvalidVariable")]
+fn variable_is_0_3() {
+    qmc::minimize_maxterms(&["0"], &[], &[], false, None).unwrap();
+}
+
+#[test]
+#[should_panic(expected = "InvalidVariable")]
+fn variable_is_1() {
+    qmc::minimize(&["1"], &[], &[], qmc::SOP, false, None).unwrap();
+}
+
+#[test]
+#[should_panic(expected = "InvalidVariable")]
+fn variable_is_1_2() {
+    qmc::minimize_minterms(&["1"], &[], &[], false, None).unwrap();
+}
+
+#[test]
+#[should_panic(expected = "InvalidVariable")]
+fn variable_is_1_3() {
+    qmc::minimize_maxterms(&["1"], &[], &[], false, None).unwrap();
+}
+
+#[test]
+#[should_panic(expected = "InvalidVariable")]
 fn empty_string_variable() {
     qmc::minimize(&[""], &[], &[], qmc::SOP, false, None).unwrap();
 }
@@ -65,20 +101,38 @@ fn empty_string_variable3() {
 
 #[test]
 #[should_panic(expected = "InvalidVariable")]
-fn only_whitespace_variable() {
-    qmc::minimize(&[" "], &[], &[], qmc::SOP, false, None).unwrap();
+fn leading_whitespace_variable() {
+    qmc::minimize(&[" A"], &[], &[], qmc::SOP, false, None).unwrap();
 }
 
 #[test]
 #[should_panic(expected = "InvalidVariable")]
-fn only_whitespace_variable2() {
-    qmc::minimize_minterms(&[" "], &[], &[], false, None).unwrap();
+fn leading_whitespace_variable2() {
+    qmc::minimize_minterms(&[" A"], &[], &[], false, None).unwrap();
 }
 
 #[test]
 #[should_panic(expected = "InvalidVariable")]
-fn only_whitespace_variable3() {
-    qmc::minimize_maxterms(&[" "], &[], &[], false, None).unwrap();
+fn leading_whitespace_variable3() {
+    qmc::minimize_maxterms(&[" A"], &[], &[], false, None).unwrap();
+}
+
+#[test]
+#[should_panic(expected = "InvalidVariable")]
+fn trailing_whitespace_variable() {
+    qmc::minimize(&["A "], &[], &[], qmc::SOP, false, None).unwrap();
+}
+
+#[test]
+#[should_panic(expected = "InvalidVariable")]
+fn trailing_whitespace_variable2() {
+    qmc::minimize_minterms(&["A "], &[], &[], false, None).unwrap();
+}
+
+#[test]
+#[should_panic(expected = "InvalidVariable")]
+fn trailing_whitespace_variable3() {
+    qmc::minimize_maxterms(&["A "], &[], &[], false, None).unwrap();
 }
 
 #[test]
