@@ -9,8 +9,8 @@ use crate::{implicant::Implicant, Form};
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Solution {
-    Zero,
     One,
+    Zero,
     SOP(Vec<Vec<Variable>>),
     POS(Vec<Vec<Variable>>),
 }
@@ -22,14 +22,6 @@ impl Solution {
             .map(|implicant| implicant.to_variables(variables, form))
             .collect::<Vec<_>>();
 
-        let is_zero = if expression.is_empty() {
-            form == Form::SOP
-        } else if expression[0].is_empty() {
-            form == Form::POS
-        } else {
-            false
-        };
-
         let is_one = if expression.is_empty() {
             form == Form::POS
         } else if expression[0].is_empty() {
@@ -38,10 +30,18 @@ impl Solution {
             false
         };
 
-        if is_zero {
-            Solution::Zero
-        } else if is_one {
+        let is_zero = if expression.is_empty() {
+            form == Form::SOP
+        } else if expression[0].is_empty() {
+            form == Form::POS
+        } else {
+            false
+        };
+
+        if is_one {
             Solution::One
+        } else if is_zero {
+            Solution::Zero
         } else if form == Form::SOP {
             Solution::SOP(expression)
         } else {
@@ -53,8 +53,8 @@ impl Solution {
 impl Display for Solution {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let (expression, form) = match self {
-            Solution::Zero => return write!(f, "0"),
             Solution::One => return write!(f, "1"),
+            Solution::Zero => return write!(f, "0"),
             Solution::SOP(expression) => (expression, Form::SOP),
             Solution::POS(expression) => (expression, Form::POS),
         };
