@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashSet, ops::Deref};
 
-use crate::implicant::Implicant;
+use crate::{implicant::Implicant, Form};
 
 #[derive(Clone)]
 pub struct Group {
@@ -18,11 +18,11 @@ impl Group {
         }
     }
 
-    pub fn group_terms(variable_count: u32, terms: &HashSet<u32>, sop: bool) -> Vec<Self> {
+    pub fn group_terms(variable_count: u32, terms: &HashSet<u32>, form: Form) -> Vec<Self> {
         let mut groups = vec![Group::new(); (variable_count + 1) as usize];
 
         for &term in terms {
-            let index = if sop {
+            let index = if form == Form::SOP {
                 term.count_ones()
             } else {
                 term.count_zeros() - (32 - variable_count)

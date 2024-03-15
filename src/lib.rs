@@ -146,14 +146,14 @@ pub fn minimize<T: AsRef<str>>(
         variable_count,
         terms,
         dont_cares,
-        form == SOP,
+        form,
         find_all_solutions,
         timeout,
     )?;
 
     Ok(internal_solutions
         .iter()
-        .map(|solution| Solution::new(solution, &variables, form == SOP))
+        .map(|solution| Solution::new(solution, &variables, form))
         .collect())
 }
 
@@ -213,14 +213,14 @@ pub fn minimize_minterms<T: AsRef<str>>(
         variable_count,
         minterms,
         dont_cares,
-        true,
+        SOP,
         find_all_solutions,
         timeout,
     )?;
 
     Ok(internal_solutions
         .iter()
-        .map(|solution| Solution::new(solution, &variables, true))
+        .map(|solution| Solution::new(solution, &variables, SOP))
         .collect())
 }
 
@@ -280,14 +280,14 @@ pub fn minimize_maxterms<T: AsRef<str>>(
         variable_count,
         maxterms,
         dont_cares,
-        false,
+        POS,
         find_all_solutions,
         timeout,
     )?;
 
     Ok(internal_solutions
         .iter()
-        .map(|solution| Solution::new(solution, &variables, false))
+        .map(|solution| Solution::new(solution, &variables, POS))
         .collect())
 }
 
@@ -338,7 +338,7 @@ fn minimize_internal_with_timeout(
     variable_count: u32,
     terms: HashSet<u32>,
     dont_cares: HashSet<u32>,
-    sop: bool,
+    form: Form,
     find_all_solutions: bool,
     timeout: Option<Duration>,
 ) -> Result<Vec<Vec<Implicant>>, Error> {
@@ -347,7 +347,7 @@ fn minimize_internal_with_timeout(
             variable_count,
             &terms,
             &dont_cares,
-            sop,
+            form,
             find_all_solutions,
         ));
     };
@@ -361,7 +361,7 @@ fn minimize_internal_with_timeout(
                 variable_count,
                 &terms,
                 &dont_cares,
-                sop,
+                form,
                 find_all_solutions,
             )))
             .unwrap()
@@ -379,10 +379,10 @@ fn minimize_internal(
     variable_count: u32,
     terms: &HashSet<u32>,
     dont_cares: &HashSet<u32>,
-    sop: bool,
+    form: Form,
     find_all_solutions: bool,
 ) -> Vec<Vec<Implicant>> {
-    let prime_implicants = find_prime_implicants(variable_count, terms, dont_cares, sop);
+    let prime_implicants = find_prime_implicants(variable_count, terms, dont_cares, form);
     let mut prime_implicant_chart = PrimeImplicantChart::new(prime_implicants, dont_cares);
     let essential_prime_implicants = prime_implicant_chart.simplify(find_all_solutions);
     let petrick_solutions = Petrick::solve(&prime_implicant_chart);
@@ -393,7 +393,7 @@ fn minimize_internal(
         .collect::<Vec<_>>();
 
     for solution in &mut solutions {
-        solution.variable_sort(sop);
+        solution.variable_sort(form);
         assert!(check_solution(terms, dont_cares, solution));
     }
 
@@ -404,10 +404,10 @@ fn find_prime_implicants(
     variable_count: u32,
     terms: &HashSet<u32>,
     dont_cares: &HashSet<u32>,
-    sop: bool,
+    form: Form,
 ) -> Vec<Implicant> {
     let terms = terms.union(dont_cares).copied().collect();
-    let mut groups = Group::group_terms(variable_count, &terms, sop);
+    let mut groups = Group::group_terms(variable_count, &terms, form);
     let mut prime_implicants = vec![];
 
     loop {
@@ -522,13 +522,13 @@ mod tests {
             let term_combinations = generate_terms_exhaustive(variable_count);
 
             for terms in &term_combinations {
-                for sop in [true, false] {
+                for form in [SOP, POS] {
                     for find_all_solutions in [true, false] {
                         minimize_and_print_solutions(
                             variable_count,
                             &terms.0,
                             &terms.1,
-                            sop,
+                            form,
                             find_all_solutions,
                         );
                     }
@@ -543,13 +543,13 @@ mod tests {
             let term_combinations = generate_terms_random(variable_count, 1000);
 
             for terms in &term_combinations {
-                for sop in [true, false] {
+                for form in [SOP, POS] {
                     for find_all_solutions in [true, false] {
                         minimize_and_print_solutions(
                             variable_count,
                             &terms.0,
                             &terms.1,
-                            sop,
+                            form,
                             find_all_solutions,
                         );
                     }
@@ -561,7 +561,7 @@ mod tests {
     // #[test]
     // fn test_minimize_specific() {
     //     let variable_count = 1;
-    //     let sop = true;
+    //     let form = SOP;
     //     let find_all_solutions = true;
     //     let minterms = [];
     //     let maxterms = [];
@@ -570,7 +570,7 @@ mod tests {
     //         variable_count,
     //         &minterms,
     //         &maxterms,
-    //         sop,
+    //         form,
     //         find_all_solutions,
     //     );
     // }
@@ -581,16 +581,16 @@ mod tests {
             variable_count: u32,
             minterms: &[u32],
             maxterms: &[u32],
-            sop: bool,
+            form: Form,
             expected: &[&str],
         ) {
             let minterms = HashSet::from_iter(minterms.iter().copied());
             let maxterms = HashSet::from_iter(maxterms.iter().copied());
 
             let dont_cares = get_dont_cares(variable_count, &minterms, &maxterms);
-            let terms = if sop { minterms } else { maxterms };
+            let terms = if form == SOP { minterms } else { maxterms };
 
-            let result = find_prime_implicants(variable_count, &terms, &dont_cares, sop);
+            let result = find_prime_implicants(variable_count, &terms, &dont_cares, form);
 
             assert_eq!(
                 result.into_iter().collect::<HashSet<_>>(),
@@ -598,33 +598,33 @@ mod tests {
             );
         }
 
-        test(1, &[], &[0, 1], true, &[]);
-        test(1, &[0], &[1], true, &["0"]);
-        test(1, &[1], &[0], true, &["1"]);
-        test(1, &[0, 1], &[], true, &["-"]);
-        test(1, &[], &[], true, &[]);
-        test(1, &[], &[0], true, &[]);
-        test(1, &[], &[1], true, &[]);
-        test(1, &[0], &[], true, &["-"]);
-        test(1, &[1], &[], true, &["-"]);
+        test(1, &[], &[0, 1], SOP, &[]);
+        test(1, &[0], &[1], SOP, &["0"]);
+        test(1, &[1], &[0], SOP, &["1"]);
+        test(1, &[0, 1], &[], SOP, &["-"]);
+        test(1, &[], &[], SOP, &[]);
+        test(1, &[], &[0], SOP, &[]);
+        test(1, &[], &[1], SOP, &[]);
+        test(1, &[0], &[], SOP, &["-"]);
+        test(1, &[1], &[], SOP, &["-"]);
 
-        test(1, &[0, 1], &[], false, &[]);
-        test(1, &[1], &[0], false, &["0"]);
-        test(1, &[0], &[1], false, &["1"]);
-        test(1, &[], &[0, 1], false, &["-"]);
-        test(1, &[], &[], false, &[]);
-        test(1, &[0], &[], false, &[]);
-        test(1, &[1], &[], false, &[]);
-        test(1, &[], &[0], false, &["-"]);
-        test(1, &[], &[1], false, &["-"]);
+        test(1, &[0, 1], &[], POS, &[]);
+        test(1, &[1], &[0], POS, &["0"]);
+        test(1, &[0], &[1], POS, &["1"]);
+        test(1, &[], &[0, 1], POS, &["-"]);
+        test(1, &[], &[], POS, &[]);
+        test(1, &[0], &[], POS, &[]);
+        test(1, &[1], &[], POS, &[]);
+        test(1, &[], &[0], POS, &["-"]);
+        test(1, &[], &[1], POS, &["-"]);
 
-        test(2, &[0, 3], &[2], true, &["0-", "-1"]);
+        test(2, &[0, 3], &[2], SOP, &["0-", "-1"]);
 
         test(
             3,
             &[1, 2, 5],
             &[3, 4, 7],
-            true,
+            SOP,
             &["00-", "0-0", "-01", "-10"],
         );
 
@@ -632,7 +632,7 @@ mod tests {
             4,
             &[2, 4, 5, 7, 9],
             &[3, 6, 10, 12, 15],
-            true,
+            SOP,
             &["00-0", "01-1", "10-1", "0-0-", "-00-", "--01"],
         );
     }
@@ -641,7 +641,7 @@ mod tests {
         variable_count: u32,
         minterms: &[u32],
         maxterms: &[u32],
-        sop: bool,
+        form: Form,
         find_all_solutions: bool,
     ) {
         let dont_cares = Vec::from_iter(get_dont_cares(
@@ -651,15 +651,15 @@ mod tests {
         ));
 
         println!(
-            "sop: {}, find_all_solutions: {}, variable_count: {}, minterms: {:?}, maxterms: {:?}, dont_cares: {:?}",
-            sop, find_all_solutions, variable_count, minterms, maxterms, dont_cares
+            "form: {:?}, find_all_solutions: {}, variable_count: {}, minterms: {:?}, maxterms: {:?}, dont_cares: {:?}",
+            form, find_all_solutions, variable_count, minterms, maxterms, dont_cares
         );
 
         let solutions = minimize(
             &DEFAULT_VARIABLES[..variable_count as usize],
             minterms,
             maxterms,
-            if sop { SOP } else { POS },
+            form,
             find_all_solutions,
             None,
         )

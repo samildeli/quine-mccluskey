@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, collections::HashSet, hash::Hash};
 
-use crate::solution::Variable;
+use crate::{solution::Variable, Form};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Implicant {
@@ -58,7 +58,7 @@ impl Implicant {
         self.mask.count_ones()
     }
 
-    pub fn to_variables(self, variable_names: &[String], sop: bool) -> Vec<Variable> {
+    pub fn to_variables(self, variable_names: &[String], form: Form) -> Vec<Variable> {
         let mut variables = vec![];
         let variable_count = variable_names.len();
 
@@ -68,7 +68,8 @@ impl Implicant {
 
             if mask_bit != 1 {
                 let index = variable_count - i - 1;
-                let is_negated = sop && value_bit == 0 || !sop && value_bit == 1;
+                let is_negated =
+                    form == Form::SOP && value_bit == 0 || form == Form::POS && value_bit == 1;
 
                 variables.push(Variable::new(variable_names[index].clone(), is_negated));
             }
@@ -79,11 +80,11 @@ impl Implicant {
 }
 
 pub trait VariableSort {
-    fn variable_sort(&mut self, sop: bool);
+    fn variable_sort(&mut self, form: Form);
 }
 
 impl VariableSort for Vec<Implicant> {
-    fn variable_sort(&mut self, sop: bool) {
+    fn variable_sort(&mut self, form: Form) {
         self.sort_unstable_by(|impl1, impl2| {
             let ordering = impl2.mask.count_ones().cmp(&impl1.mask.count_ones());
 
@@ -100,8 +101,8 @@ impl VariableSort for Vec<Implicant> {
                 // If both bits are the same variable but one is negated and the other is not,
                 if mask_bit1 == 0 && mask_bit2 == 0 && value_bit1 != value_bit2 {
                     // put the implicant with the non-negated variable before.
-                    if sop && value_bit1 == 1 && value_bit2 == 0
-                        || !sop && value_bit1 == 0 && value_bit2 == 1
+                    if form == Form::SOP && value_bit1 == 1 && value_bit2 == 0
+                        || form == Form::POS && value_bit1 == 0 && value_bit2 == 1
                     {
                         return Ordering::Less;
                     }

@@ -16,24 +16,24 @@ pub enum Solution {
 }
 
 impl Solution {
-    pub(crate) fn new(internal_solution: &[Implicant], variables: &[String], sop: bool) -> Self {
+    pub(crate) fn new(internal_solution: &[Implicant], variables: &[String], form: Form) -> Self {
         let expression = internal_solution
             .iter()
-            .map(|implicant| implicant.to_variables(variables, sop))
+            .map(|implicant| implicant.to_variables(variables, form))
             .collect::<Vec<_>>();
 
         let is_zero = if expression.is_empty() {
-            sop
+            form == Form::SOP
         } else if expression[0].is_empty() {
-            !sop
+            form == Form::POS
         } else {
             false
         };
 
         let is_one = if expression.is_empty() {
-            !sop
+            form == Form::POS
         } else if expression[0].is_empty() {
-            sop
+            form == Form::SOP
         } else {
             false
         };
@@ -42,7 +42,7 @@ impl Solution {
             Solution::Zero
         } else if is_one {
             Solution::One
-        } else if sop {
+        } else if form == Form::SOP {
             Solution::SOP(expression)
         } else {
             Solution::POS(expression)
