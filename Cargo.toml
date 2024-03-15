@@ -1,12 +1,18 @@
 [package]
 name = "quine-mccluskey"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
-
-[dev-dependencies]
-itertools = "0.12.1"
-rand = "0.8.5"
+description = "Boolean function minimizer based on Quine–McCluskey algorithm."
+authors = ["samildeli <samildeli.dev@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/samildeli/quine-mccluskey"
+keywords = ["boolean", "minimize", "algorithm"]
+categories = ["algorithms"]
 
 [dependencies]
 serde = { version = "1.0.197", features = ["derive"], optional = true }
 thiserror = "1.0.57"
+
+[dev-dependencies]
+itertools = "0.12.1"
+rand = "0.8.5"
