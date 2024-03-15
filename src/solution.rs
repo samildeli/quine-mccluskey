@@ -3,79 +3,64 @@ use std::fmt::Display;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    implicant::Implicant,
-    Form::{self, POS, SOP},
-};
+use crate::{implicant::Implicant, Form};
 
 /// A minimized boolean expression.
-///
-/// If you use [`Solution::expression`], make sure to first handle the cases
-/// where the expression equals 0 or 1 using [`Solution::is_zero`] and [`Solution::is_one`].
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Solution {
-    expression: Vec<Vec<Variable>>,
-    sop: bool,
+pub enum Solution {
+    Zero,
+    One,
+    SOP(Vec<Vec<Variable>>),
+    POS(Vec<Vec<Variable>>),
 }
 
 impl Solution {
     pub(crate) fn new(internal_solution: &[Implicant], variables: &[String], sop: bool) -> Self {
-        Solution {
-            expression: internal_solution
-                .iter()
-                .map(|implicant| implicant.to_variables(variables, sop))
-                .collect(),
-            sop,
-        }
-    }
+        let expression = internal_solution
+            .iter()
+            .map(|implicant| implicant.to_variables(variables, sop))
+            .collect::<Vec<_>>();
 
-    /// Returns a list of products if the expression is in [`SOP`] form, or a list of sums if the expression is in [`POS`] form.
-    pub fn expression(&self) -> &[Vec<Variable>] {
-        &self.expression
-    }
-
-    pub fn form(&self) -> Form {
-        if self.sop {
-            SOP
-        } else {
-            POS
-        }
-    }
-
-    pub fn is_zero(&self) -> bool {
-        if self.expression.is_empty() {
-            self.sop
-        } else if self.expression[0].is_empty() {
-            !self.sop
+        let is_zero = if expression.is_empty() {
+            sop
+        } else if expression[0].is_empty() {
+            !sop
         } else {
             false
-        }
-    }
+        };
 
-    pub fn is_one(&self) -> bool {
-        if self.expression.is_empty() {
-            !self.sop
-        } else if self.expression[0].is_empty() {
-            self.sop
+        let is_one = if expression.is_empty() {
+            !sop
+        } else if expression[0].is_empty() {
+            sop
         } else {
             false
+        };
+
+        if is_zero {
+            Solution::Zero
+        } else if is_one {
+            Solution::One
+        } else if sop {
+            Solution::SOP(expression)
+        } else {
+            Solution::POS(expression)
         }
     }
 }
 
 impl Display for Solution {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.is_zero() {
-            return write!(f, "0");
-        }
+        let (expression, form) = match self {
+            Solution::Zero => return write!(f, "0"),
+            Solution::One => return write!(f, "1"),
+            Solution::SOP(expression) => (expression, Form::SOP),
+            Solution::POS(expression) => (expression, Form::POS),
+        };
 
-        if self.is_one() {
-            return write!(f, "1");
-        }
-
-        for (i, variables) in self.expression.iter().enumerate() {
-            if self.expression.len() > 1 && variables.len() > 1 {
+        for (i, variables) in expression.iter().enumerate() {
+            if expression.len() > 1 && variables.len() > 1 {
                 write!(f, "(")?;
             }
 
@@ -83,16 +68,16 @@ impl Display for Solution {
                 write!(f, "{}", variable)?;
 
                 if j < variables.len() - 1 {
-                    write!(f, " {} ", if self.sop { "∧" } else { "∨" })?;
+                    write!(f, " {} ", if form == Form::SOP { "∧" } else { "∨" })?;
                 }
             }
 
-            if self.expression.len() > 1 && variables.len() > 1 {
+            if expression.len() > 1 && variables.len() > 1 {
                 write!(f, ")")?;
             }
 
-            if i < self.expression.len() - 1 {
-                write!(f, " {} ", if self.sop { "∨" } else { "∧" })?;
+            if i < expression.len() - 1 {
+                write!(f, " {} ", if form == Form::SOP { "∨" } else { "∧" })?;
             }
         }
 
@@ -104,21 +89,13 @@ impl Display for Solution {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Variable {
-    name: String,
-    is_negated: bool,
+    pub name: String,
+    pub is_negated: bool,
 }
 
 impl Variable {
     pub(crate) fn new(name: String, is_negated: bool) -> Self {
         Variable { name, is_negated }
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn is_negated(&self) -> bool {
-        self.is_negated
     }
 }
 
