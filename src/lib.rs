@@ -314,8 +314,8 @@ pub enum Error {
     /// The number of variables was less than 1 or greater than `DEFAULT_VARIABLES.len()`.
     #[error("Invalid variable count: {0} (expected 1 <= variables.len() <= {})", DEFAULT_VARIABLES.len())]
     InvalidVariableCount(usize),
-    /// Variable was 0, 1, empty string or string with leading or trailing whitespaces.
-    #[error("0, 1, empty string and strings with leading or trailing whitespaces are not allowed as variables.")]
+    /// Variable was 0, 1, empty string or string with leading or trailing whitespace.
+    #[error("0, 1, empty string and strings with leading or trailing whitespace are not allowed as variables.")]
     InvalidVariable,
     /// There were duplicate variables.
     #[error("Duplicate variables are not allowed: {0:?}")]
