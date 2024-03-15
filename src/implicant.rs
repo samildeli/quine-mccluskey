@@ -1,3 +1,5 @@
+// See the paper "Optimization of the Quine-McCluskey Method for the Minimization of the Boolean Expressions"
+
 use std::{cmp::Ordering, collections::HashSet, hash::Hash};
 
 use crate::{solution::Variable, Form};

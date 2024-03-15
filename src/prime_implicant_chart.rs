@@ -1,3 +1,5 @@
+// See the paper "Minimization of Boolean expressions using matrix algebra"
+
 use std::collections::{HashMap, HashSet};
 
 use crate::implicant::Implicant;
