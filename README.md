@@ -1,14 +1,7 @@
-<div style="position:relative" >
-    <h1>Quine-McCluskey</h1>
-    <div style="position:absolute;top:5px;right:0;display:flex;gap:11px">
-        <a href="https://crates.io/crates/quine-mccluskey">
-            <img src="https://samildeli.com/images/crates.io.png" alt="crates.io" style="height:33px;border-radius:3px"/>
-        </a>
-        <a href="https://docs.rs/quine-mccluskey">
-            <img src="https://samildeli.com/images/docs.rs.png" alt="docs.rs" style="height:33px;border-radius:3px"/>
-        </a>
-    </div>
-</div>
+<h1>Quine-McCluskey</h1>
+
+[![crates.io](https://samildeli.com/images/crates.io.png)](https://crates.io/crates/quine-mccluskey)
+[![docs.rs](https://samildeli.com/images/docs.rs.png)](https://docs.rs/quine-mccluskey)
 
 Boolean function minimizer based on [Quine-McCluskey algorithm](https://en.wikipedia.org/wiki/Quine%E2%80%93McCluskey_algorithm).
 
