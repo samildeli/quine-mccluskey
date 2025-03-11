@@ -1,8 +1,9 @@
 // See the paper "Minimization of Boolean expressions using matrix algebra"
 
-use std::collections::{HashMap, HashSet};
-
 use crate::implicant::Implicant;
+use crate::timeout_signal::TTimeoutSignal;
+use crate::Error;
+use std::collections::{HashMap, HashSet};
 
 pub struct PrimeImplicantChart {
     implicants: Vec<Implicant>,
@@ -48,7 +49,11 @@ impl PrimeImplicantChart {
         }
     }
 
-    pub fn simplify(&mut self, only_extract: bool) -> Vec<Implicant> {
+    pub fn simplify(
+        &mut self,
+        timeout_signal: &impl TTimeoutSignal,
+        only_extract: bool,
+    ) -> Result<Vec<Implicant>, Error> {
         #[cfg(test)]
         println!(
             "Simplifying {} implicants and {} terms",
@@ -60,10 +65,10 @@ impl PrimeImplicantChart {
 
         if only_extract {
             self.extract_essential_prime_implicants();
-            return self.essential_prime_implicants.clone();
+            return Ok(self.essential_prime_implicants.clone());
         }
 
-        loop {
+        while timeout_signal.is_not_signaled() {
             let any_essentials_extracted = self.extract_essential_prime_implicants();
             let any_terms_removed = self.remove_dominating_terms();
             let any_implicants_removed = self.remove_dominated_implicants();
@@ -73,27 +78,30 @@ impl PrimeImplicantChart {
             }
         }
 
-        self.essential_prime_implicants.clone()
+        if timeout_signal.is_signaled() {
+            Err(Error::Timeout)
+        } else {
+            Ok(self.essential_prime_implicants.clone())
+        }
     }
 
     pub fn get_column_covering_implicants(&self) -> Vec<Vec<Implicant>> {
-        let mut column_covering_implicants = vec![];
+        let mut column_covering_implicants = Vec::with_capacity(self.terms.len());
 
         for x in 0..self.terms.len() {
-            column_covering_implicants.push(vec![]);
-
-            for (y, &implicant) in self.implicants.iter().enumerate() {
-                if self.cols[x][y] {
-                    column_covering_implicants[x].push(implicant);
-                }
-            }
+            column_covering_implicants.push(
+                self.implicants
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(y, &implicant)| self.cols[x][y].then_some(implicant))
+                    .collect(),
+            );
         }
 
         column_covering_implicants
     }
 
     fn extract_essential_prime_implicants(&mut self) -> bool {
-        let mut extracted_implicants = vec![];
         let mut rows_to_extract = HashSet::new();
         let mut covered_columns = HashSet::new();
 
@@ -126,6 +134,7 @@ impl PrimeImplicantChart {
         let mut rows_to_extract = Vec::from_iter(rows_to_extract);
         rows_to_extract.sort_unstable();
 
+        let mut extracted_implicants = Vec::with_capacity(rows_to_extract.len());
         for y in rows_to_extract.into_iter().rev() {
             extracted_implicants.push(self.remove_row(y));
         }
@@ -211,7 +220,7 @@ impl PrimeImplicantChart {
 
         (self.implicants, self.rows) = sorted_implicants.into_iter().unzip();
 
-        let mut new_cols = vec![];
+        let mut new_cols = Vec::with_capacity(self.terms.len());
 
         for x in 0..self.terms.len() {
             new_cols.push(self.rows.iter().map(|row| row[x]).collect());
@@ -225,7 +234,7 @@ impl PrimeImplicantChart {
 
         (self.terms, self.cols) = sorted_terms.into_iter().unzip();
 
-        let mut new_rows = vec![];
+        let mut new_rows = Vec::with_capacity(self.implicants.len());
 
         for y in 0..self.implicants.len() {
             new_rows.push(self.cols.iter().map(|col| col[y]).collect());

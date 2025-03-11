@@ -1,9 +1,13 @@
-use crate::{implicant::Implicant, prime_implicant_chart::PrimeImplicantChart};
+use crate::timeout_signal::TTimeoutSignal;
+use crate::{implicant::Implicant, prime_implicant_chart::PrimeImplicantChart, Error};
 
 pub struct Petrick;
 
 impl Petrick {
-    pub fn solve(prime_implicant_chart: &PrimeImplicantChart) -> Vec<Vec<Implicant>> {
+    pub fn solve(
+        timeout_signal: &impl TTimeoutSignal,
+        prime_implicant_chart: &PrimeImplicantChart,
+    ) -> Result<Vec<Vec<Implicant>>, Error> {
         let mut sums: Vec<SumOfProduct> = prime_implicant_chart
             .get_column_covering_implicants()
             .into_iter()
@@ -11,17 +15,17 @@ impl Petrick {
             .collect();
 
         if sums.is_empty() {
-            return vec![vec![]];
+            return Ok(vec![vec![]]);
         }
 
-        while sums.len() > 1 {
+        while sums.len() > 1 && timeout_signal.is_not_signaled() {
             #[cfg(test)]
             println!(
                 "Distributing {} sums ({} products)...",
                 sums.len(),
                 sums.iter().fold(0, |acc, sum| acc + sum.products.len())
             );
-            Self::distribute(&mut sums);
+            Self::distribute(timeout_signal, &mut sums)?;
 
             #[cfg(test)]
             println!(
@@ -29,19 +33,32 @@ impl Petrick {
                 sums.len(),
                 sums.iter().fold(0, |acc, sum| acc + sum.products.len())
             );
-            Self::absorb(&mut sums);
+            Self::absorb(timeout_signal, &mut sums)?;
         }
 
-        let candidates = sums.pop().unwrap().into();
-        let candidates = Self::filter_minimal_implicants(candidates);
-        Self::filter_minimal_literals(candidates)
+        if timeout_signal.is_signaled() {
+            Err(Error::Timeout)
+        } else {
+            let candidates = sums.pop().unwrap().into();
+            let candidates = Self::filter_minimal_implicants(candidates);
+            Ok(Self::filter_minimal_literals(candidates))
+        }
     }
 
-    fn distribute(sums: &mut Vec<SumOfProduct>) {
-        let mut distributed_sums = vec![];
+    fn distribute(
+        timeout_signal: &impl TTimeoutSignal,
+        sums: &mut Vec<SumOfProduct>,
+    ) -> Result<(), Error> {
+        const CHUNK_SIZE: usize = 2;
 
-        for adjacent_sums in sums.chunks_exact(2) {
-            distributed_sums.push(adjacent_sums[0].distribute(&adjacent_sums[1]));
+        let mut distributed_sums = Vec::with_capacity((sums.len() + (CHUNK_SIZE - 1)) / CHUNK_SIZE);
+
+        for adjacent_sums in sums.chunks_exact(CHUNK_SIZE) {
+            if timeout_signal.is_signaled() {
+                return Err(Error::Timeout);
+            }
+
+            distributed_sums.push(adjacent_sums[0].distribute(timeout_signal, &adjacent_sums[1])?);
         }
 
         if sums.len() % 2 == 1 {
@@ -49,11 +66,26 @@ impl Petrick {
         }
 
         *sums = distributed_sums;
+
+        if timeout_signal.is_signaled() {
+            Err(Error::Timeout)
+        } else {
+            Ok(())
+        }
     }
 
-    fn absorb(sums: &mut Vec<SumOfProduct>) {
+    fn absorb(
+        timeout_signal: &impl TTimeoutSignal,
+        sums: &mut Vec<SumOfProduct>,
+    ) -> Result<(), Error> {
         for sum in sums {
-            sum.absorb();
+            sum.absorb(timeout_signal)?;
+        }
+
+        if timeout_signal.is_signaled() {
+            Err(Error::Timeout)
+        } else {
+            Ok(())
         }
     }
 
@@ -97,22 +129,39 @@ impl SumOfProduct {
         }
     }
 
-    pub fn distribute(&self, other: &Self) -> Self {
-        let mut distributed_products = vec![];
+    pub fn distribute(
+        &self,
+        timeout_signal: &impl TTimeoutSignal,
+        other: &Self,
+    ) -> Result<Self, Error> {
+        let mut distributed_products =
+            Vec::with_capacity(self.products.len() * other.products.len());
 
         for product in &self.products {
+            if timeout_signal.is_signaled() {
+                return Err(Error::Timeout);
+            }
+
             for other_product in &other.products {
                 distributed_products.push(product.and(other_product));
             }
         }
 
-        SumOfProduct {
-            products: distributed_products,
+        if timeout_signal.is_signaled() {
+            Err(Error::Timeout)
+        } else {
+            Ok(SumOfProduct {
+                products: distributed_products,
+            })
         }
     }
 
-    pub fn absorb(&mut self) {
+    pub fn absorb(&mut self, timeout_signal: &impl TTimeoutSignal) -> Result<(), Error> {
         for i in (0..self.products.len()).rev() {
+            if timeout_signal.is_signaled() {
+                return Err(Error::Timeout);
+            }
+
             for j in (0..i).rev() {
                 if let Some(product) = self.products[i].absorb(&self.products[j]) {
                     self.products[j] = product;
@@ -120,6 +169,12 @@ impl SumOfProduct {
                     break;
                 }
             }
+        }
+
+        if timeout_signal.is_signaled() {
+            Err(Error::Timeout)
+        } else {
+            Ok(())
         }
     }
 }

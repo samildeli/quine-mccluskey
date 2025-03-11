@@ -34,6 +34,7 @@ mod implicant;
 mod petrick;
 mod prime_implicant_chart;
 mod solution;
+mod timeout_signal;
 
 pub use solution::Solution;
 pub use solution::Variable;
@@ -41,17 +42,19 @@ pub use solution::Variable;
 pub use Form::{POS, SOP};
 
 use std::collections::HashSet;
-use std::sync::mpsc;
+use std::ops::Not;
+use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Duration;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use group::Group;
-use implicant::{Implicant, VariableSort};
-use petrick::Petrick;
-use prime_implicant_chart::PrimeImplicantChart;
+use crate::group::Group;
+use crate::implicant::{Implicant, VariableSort};
+use crate::petrick::Petrick;
+use crate::prime_implicant_chart::PrimeImplicantChart;
+use crate::timeout_signal::{TTimeoutSignal, TimeoutSignalAtomicBool, TimeoutSignalNoOp};
 
 /// Minimizes the boolean function represented by the given `minterms` and `maxterms`.
 ///
@@ -312,7 +315,7 @@ pub static DEFAULT_VARIABLES: [&str; 26] = [
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Error {
     /// The number of variables was less than 1 or greater than `DEFAULT_VARIABLES.len()`.
-    #[error("Invalid variable count: {0} (expected 1 <= variables.len() <= {})", DEFAULT_VARIABLES.len())]
+    #[error("Invalid variable count: {default_len} (expected 1 <= variables.len() <= {default_len})", default_len = DEFAULT_VARIABLES.len())]
     InvalidVariableCount(usize),
     /// Variable was 0, 1, empty string or string with leading or trailing whitespace.
     #[error("0, 1, empty string and strings with leading or trailing whitespace are not allowed as variables.")]
@@ -343,49 +346,67 @@ fn minimize_internal_with_timeout(
     timeout: Option<Duration>,
 ) -> Result<Vec<Vec<Implicant>>, Error> {
     let Some(timeout) = timeout else {
-        return Ok(minimize_internal(
+        return minimize_internal(
+            &TimeoutSignalNoOp,
             variable_count,
             &terms,
             &dont_cares,
             form,
             find_all_solutions,
-        ));
+        );
     };
 
     let (sender, receiver) = mpsc::channel();
-    let timeout_sender = sender.clone();
 
-    thread::spawn(move || {
-        sender
-            .send(Ok(minimize_internal(
-                variable_count,
-                &terms,
-                &dont_cares,
-                form,
-                find_all_solutions,
-            )))
-            .unwrap()
-    });
+    let outer_timeout_signal = Arc::new(TimeoutSignalAtomicBool::default());
+    let timeout_signal = outer_timeout_signal.clone();
 
-    thread::spawn(move || {
-        thread::sleep(timeout);
-        timeout_sender.send(Err(Error::Timeout)).unwrap();
-    });
+    let mut _worker_thread_builder = thread::Builder::new();
+    #[cfg(debug_assertions)]
+    {
+        _worker_thread_builder =
+            _worker_thread_builder.name("quine-mccluskey worker thread".into());
+    }
 
-    receiver.recv().unwrap()
+    let worker_thread = _worker_thread_builder
+        .spawn(move || {
+            sender
+                .send(minimize_internal(
+                    timeout_signal.as_ref(),
+                    variable_count,
+                    &terms,
+                    &dont_cares,
+                    form,
+                    find_all_solutions,
+                ))
+                .unwrap()
+        })
+        .expect("failed to spawn quine-mccluskey worker thread");
+
+    let result = receiver.recv_timeout(timeout);
+
+    outer_timeout_signal.signal();
+    worker_thread
+        .join()
+        .expect("failed to join quine-mccluskey worker thread");
+
+    result.unwrap()
 }
 
 fn minimize_internal(
+    timeout_signal: &impl TTimeoutSignal,
     variable_count: u32,
     terms: &HashSet<u32>,
     dont_cares: &HashSet<u32>,
     form: Form,
     find_all_solutions: bool,
-) -> Vec<Vec<Implicant>> {
-    let prime_implicants = find_prime_implicants(variable_count, terms, dont_cares, form);
+) -> Result<Vec<Vec<Implicant>>, Error> {
+    let prime_implicants =
+        find_prime_implicants(timeout_signal, variable_count, terms, dont_cares, form)?;
     let mut prime_implicant_chart = PrimeImplicantChart::new(prime_implicants, dont_cares);
-    let essential_prime_implicants = prime_implicant_chart.simplify(find_all_solutions);
-    let petrick_solutions = Petrick::solve(&prime_implicant_chart);
+    let essential_prime_implicants =
+        prime_implicant_chart.simplify(timeout_signal, find_all_solutions)?;
+    let petrick_solutions = Petrick::solve(timeout_signal, &prime_implicant_chart)?;
 
     let mut solutions = petrick_solutions
         .iter()
@@ -393,33 +414,48 @@ fn minimize_internal(
         .collect::<Vec<_>>();
 
     for solution in &mut solutions {
+        if timeout_signal.is_signaled() {
+            return Err(Error::Timeout);
+        }
+
         solution.variable_sort(form);
         assert!(check_solution(terms, dont_cares, solution));
     }
 
-    solutions
+    Ok(solutions)
 }
 
 fn find_prime_implicants(
+    timeout_signal: &impl TTimeoutSignal,
     variable_count: u32,
     terms: &HashSet<u32>,
     dont_cares: &HashSet<u32>,
     form: Form,
-) -> Vec<Implicant> {
+) -> Result<Vec<Implicant>, Error> {
     let terms = terms.union(dont_cares).copied().collect();
     let mut groups = Group::group_terms(variable_count, &terms, form);
     let mut prime_implicants = vec![];
 
-    loop {
+    while timeout_signal.is_not_signaled() {
         let next_groups = (0..groups.len() - 1)
             .map(|i| groups[i].combine(&groups[i + 1]))
             .collect();
 
-        prime_implicants.extend(
-            groups
-                .iter()
-                .flat_map(|group| group.get_prime_implicants(dont_cares)),
-        );
+        let mut abort = false;
+
+        let next_prime_implicants = groups
+            .iter()
+            .map_while(|group| {
+                abort = timeout_signal.is_signaled();
+                abort.not().then(|| group.get_prime_implicants(dont_cares))
+            })
+            .flatten();
+
+        prime_implicants.extend(next_prime_implicants);
+
+        if abort {
+            return Err(Error::Timeout);
+        }
 
         if groups.iter().all(|group| !group.was_combined()) {
             break;
@@ -428,7 +464,11 @@ fn find_prime_implicants(
         groups = next_groups;
     }
 
-    prime_implicants
+    if timeout_signal.is_signaled() {
+        Err(Error::Timeout)
+    } else {
+        Ok(prime_implicants)
+    }
 }
 
 fn get_dont_cares(
@@ -590,7 +630,14 @@ mod tests {
             let dont_cares = get_dont_cares(variable_count, &minterms, &maxterms);
             let terms = if form == SOP { minterms } else { maxterms };
 
-            let result = find_prime_implicants(variable_count, &terms, &dont_cares, form);
+            let result = find_prime_implicants(
+                &TimeoutSignalNoOp,
+                variable_count,
+                &terms,
+                &dont_cares,
+                form,
+            )
+            .unwrap();
 
             assert_eq!(
                 result.into_iter().collect::<HashSet<_>>(),
@@ -707,7 +754,7 @@ mod tests {
 
     fn generate_terms_random(variable_count: u32, count: u32) -> Vec<(Vec<u32>, Vec<u32>)> {
         let mut generated_terms = vec![];
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         for _ in 0..count {
             let mut all_terms = Vec::from_iter(0..1 << variable_count);
@@ -715,8 +762,8 @@ mod tests {
             let mut maxterms = vec![];
 
             for _ in 0..all_terms.len() {
-                let term = all_terms.swap_remove(rng.gen_range(0..all_terms.len()));
-                let choice = rng.gen_range(1..=3);
+                let term = all_terms.swap_remove(rng.random_range(0..all_terms.len()));
+                let choice = rng.random_range(1..=3);
 
                 if choice == 1 {
                     minterms.push(term);
