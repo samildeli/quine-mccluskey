@@ -24,14 +24,18 @@ We can minimize it in Sum of Products form using `minimize` with minterms and ma
 
 ```rust
 use quine_mccluskey as qmc;
+use quine_mccluskey::MinimizeTimeoutStrategy as mts;
 
-let mut solutions = qmc::minimize(
+let minimize_options = qmc::MinimizeOptions::default()
+    .set_find_all_solutions(false)
+    .set_timeout_strategy(mts::Indefinitely);
+
+let mut solutions = qmc::minimize_ex(
     &qmc::DEFAULT_VARIABLES[..3],
     &[0, 5],        // minterms
     &[1, 3, 4, 6],  // maxterms
     qmc::SOP,
-    false,
-    None
+    minimize_options,
 )
 .unwrap();
 
@@ -44,12 +48,18 @@ assert_eq!(
 or using `minimize_minterms` with minterms and don't cares:
 
 ```rust
-let mut solutions = qmc::minimize_minterms(
+use quine_mccluskey as qmc;
+use quine_mccluskey::MinimizeTimeoutStrategy as mts;
+
+let minimize_options = qmc::MinimizeOptions::default()
+    .set_find_all_solutions(false)
+    .set_timeout_strategy(mts::Indefinitely);
+
+let mut solutions = qmc::minimize_minterms_ex(
     &qmc::DEFAULT_VARIABLES[..3],
     &[0, 5],  // minterms
     &[2, 7],  // don't cares
-    false,
-    None
+    minimize_options,
 )
 .unwrap();
 
@@ -62,13 +72,19 @@ assert_eq!(
 And in Product of Sums form using `minimize` with minterms and maxterms and `Form::POS`:
 
 ```rust
-let mut solutions = qmc::minimize(
+use quine_mccluskey as qmc;
+use quine_mccluskey::MinimizeTimeoutStrategy as mts;
+
+let minimize_options = qmc::MinimizeOptions::default()
+    .set_find_all_solutions(false)
+    .set_timeout_strategy(mts::Indefinitely);
+
+let mut solutions = qmc::minimize_ex(
     &qmc::DEFAULT_VARIABLES[..3],
     &[0, 5],        // minterms
     &[1, 3, 4, 6],  // maxterms
     qmc::POS,
-    false,
-    None
+    minimize_options,
 )
 .unwrap();
 
@@ -81,12 +97,18 @@ assert_eq!(
 or using `minimize_maxterms` with maxterms and don't cares:
 
 ```rust
-let mut solutions = qmc::minimize_maxterms(
+use quine_mccluskey as qmc;
+use quine_mccluskey::MinimizeTimeoutStrategy as mts;
+
+let minimize_options = qmc::MinimizeOptions::default()
+    .set_find_all_solutions(false)
+    .set_timeout_strategy(mts::Indefinitely);
+
+let mut solutions = qmc::minimize_maxterms_ex(
     &qmc::DEFAULT_VARIABLES[..3],
     &[1, 3, 4, 6],  // maxterms
     &[2, 7],        // don't cares
-    false,
-    None
+    minimize_options,
 )
 .unwrap();
 
