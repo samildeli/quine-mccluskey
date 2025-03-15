@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 
 use quine_mccluskey as qmc;
-use quine_mccluskey::MinimizeOptions;
 
 #[test]
 fn solution() {
@@ -85,7 +84,7 @@ fn test(
             minterms,
             maxterms,
             qmc::SOP,
-            MinimizeOptions::default()
+            qmc::MinimizeOptions::default()
         )
         .unwrap()
         .pop()
@@ -95,11 +94,16 @@ fn test(
     );
 
     assert_eq!(
-        qmc::minimize_minterms_ex(variables, minterms, &dont_cares, MinimizeOptions::default())
-            .unwrap()
-            .pop()
-            .unwrap()
-            .to_string(),
+        qmc::minimize_minterms_ex(
+            variables,
+            minterms,
+            &dont_cares,
+            qmc::MinimizeOptions::default()
+        )
+        .unwrap()
+        .pop()
+        .unwrap()
+        .to_string(),
         expected_sop
     );
 
@@ -109,7 +113,7 @@ fn test(
             minterms,
             maxterms,
             qmc::SOP,
-            MinimizeOptions::default().set_find_all_solutions(true)
+            qmc::MinimizeOptions::default().set_find_all_solutions(true)
         )
         .unwrap()
         .pop()
@@ -123,7 +127,7 @@ fn test(
             variables,
             minterms,
             &dont_cares,
-            MinimizeOptions::default().set_find_all_solutions(true)
+            qmc::MinimizeOptions::default().set_find_all_solutions(true)
         )
         .unwrap()
         .pop()
@@ -138,7 +142,7 @@ fn test(
             minterms,
             maxterms,
             qmc::POS,
-            MinimizeOptions::default()
+            qmc::MinimizeOptions::default()
         )
         .unwrap()
         .pop()
@@ -148,11 +152,16 @@ fn test(
     );
 
     assert_eq!(
-        qmc::minimize_maxterms_ex(variables, maxterms, &dont_cares, MinimizeOptions::default())
-            .unwrap()
-            .pop()
-            .unwrap()
-            .to_string(),
+        qmc::minimize_maxterms_ex(
+            variables,
+            maxterms,
+            &dont_cares,
+            qmc::MinimizeOptions::default()
+        )
+        .unwrap()
+        .pop()
+        .unwrap()
+        .to_string(),
         expected_pos
     );
 
@@ -162,7 +171,7 @@ fn test(
             minterms,
             maxterms,
             qmc::POS,
-            MinimizeOptions::default().set_find_all_solutions(true)
+            qmc::MinimizeOptions::default().set_find_all_solutions(true)
         )
         .unwrap()
         .pop()
@@ -176,7 +185,7 @@ fn test(
             variables,
             maxterms,
             &dont_cares,
-            MinimizeOptions::default().set_find_all_solutions(true)
+            qmc::MinimizeOptions::default().set_find_all_solutions(true)
         )
         .unwrap()
         .pop()
