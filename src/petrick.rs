@@ -5,8 +5,8 @@ pub struct Petrick;
 
 impl Petrick {
     pub fn solve(
-        timeout_signal: &impl TTimeoutSignal,
         prime_implicant_chart: &PrimeImplicantChart,
+        timeout_signal: &impl TTimeoutSignal,
     ) -> Result<Vec<Vec<Implicant>>, Error> {
         let mut sums: Vec<SumOfProduct> = prime_implicant_chart
             .get_column_covering_implicants()
@@ -25,7 +25,7 @@ impl Petrick {
                 sums.len(),
                 sums.iter().fold(0, |acc, sum| acc + sum.products.len())
             );
-            Self::distribute(timeout_signal, &mut sums)?;
+            Self::distribute(&mut sums, timeout_signal)?;
 
             #[cfg(test)]
             println!(
@@ -33,7 +33,7 @@ impl Petrick {
                 sums.len(),
                 sums.iter().fold(0, |acc, sum| acc + sum.products.len())
             );
-            Self::absorb(timeout_signal, &mut sums)?;
+            Self::absorb(&mut sums, timeout_signal)?;
         }
 
         if timeout_signal.is_signaled() {
@@ -46,8 +46,8 @@ impl Petrick {
     }
 
     fn distribute(
-        timeout_signal: &impl TTimeoutSignal,
         sums: &mut Vec<SumOfProduct>,
+        timeout_signal: &impl TTimeoutSignal,
     ) -> Result<(), Error> {
         const CHUNK_SIZE: usize = 2;
 
@@ -58,7 +58,7 @@ impl Petrick {
                 return Err(Error::Timeout);
             }
 
-            distributed_sums.push(adjacent_sums[0].distribute(timeout_signal, &adjacent_sums[1])?);
+            distributed_sums.push(adjacent_sums[0].distribute(&adjacent_sums[1], timeout_signal)?);
         }
 
         if sums.len() % 2 == 1 {
@@ -75,8 +75,8 @@ impl Petrick {
     }
 
     fn absorb(
-        timeout_signal: &impl TTimeoutSignal,
         sums: &mut Vec<SumOfProduct>,
+        timeout_signal: &impl TTimeoutSignal,
     ) -> Result<(), Error> {
         for sum in sums {
             sum.absorb(timeout_signal)?;
@@ -90,11 +90,7 @@ impl Petrick {
     }
 
     fn filter_minimal_implicants(candidates: Vec<Vec<Implicant>>) -> Vec<Vec<Implicant>> {
-        let min_count = candidates
-            .iter()
-            .map(|candidate| candidate.len())
-            .min()
-            .unwrap();
+        let min_count = candidates.iter().map(Vec::len).min().unwrap();
 
         candidates
             .into_iter()
@@ -131,8 +127,8 @@ impl SumOfProduct {
 
     pub fn distribute(
         &self,
-        timeout_signal: &impl TTimeoutSignal,
         other: &Self,
+        timeout_signal: &impl TTimeoutSignal,
     ) -> Result<Self, Error> {
         let mut distributed_products =
             Vec::with_capacity(self.products.len() * other.products.len());
@@ -184,7 +180,7 @@ impl From<SumOfProduct> for Vec<Vec<Implicant>> {
         value
             .products
             .into_iter()
-            .map(|product| Vec::from_iter(product.implicants))
+            .map(|product| product.implicants)
             .collect()
     }
 }

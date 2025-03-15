@@ -26,8 +26,11 @@ impl PrimeImplicantChart {
         let mut rows = vec![vec![false; terms.len()]; implicants.len()];
         let mut cols = vec![vec![false; implicants.len()]; terms.len()];
 
-        let term_indices: HashMap<u32, usize> =
-            HashMap::from_iter(terms.iter().enumerate().map(|(i, &term)| (term, i)));
+        let term_indices: HashMap<u32, usize> = terms
+            .iter()
+            .enumerate()
+            .map(|(i, &term)| (term, i))
+            .collect();
 
         for (y, implicant) in implicants.iter().enumerate() {
             let row_terms = implicant.get_terms();
@@ -51,8 +54,8 @@ impl PrimeImplicantChart {
 
     pub fn simplify(
         &mut self,
-        timeout_signal: &impl TTimeoutSignal,
         only_extract: bool,
+        timeout_signal: &impl TTimeoutSignal,
     ) -> Result<Vec<Implicant>, Error> {
         #[cfg(test)]
         println!(
@@ -70,8 +73,8 @@ impl PrimeImplicantChart {
 
         while timeout_signal.is_not_signaled() {
             let any_essentials_extracted = self.extract_essential_prime_implicants();
-            let any_terms_removed = self.remove_dominating_terms();
-            let any_implicants_removed = self.remove_dominated_implicants();
+            let any_terms_removed = self.remove_dominating_terms(timeout_signal)?;
+            let any_implicants_removed = self.remove_dominated_implicants(timeout_signal)?;
 
             if !any_essentials_extracted && !any_terms_removed && !any_implicants_removed {
                 break;
@@ -93,7 +96,13 @@ impl PrimeImplicantChart {
                 self.implicants
                     .iter()
                     .enumerate()
-                    .filter_map(|(y, &implicant)| self.cols[x][y].then_some(implicant))
+                    .filter_map(|(y, &implicant)| {
+                        if self.cols[x][y] {
+                            Some(implicant)
+                        } else {
+                            None
+                        }
+                    })
                     .collect(),
             );
         }
@@ -122,12 +131,13 @@ impl PrimeImplicantChart {
 
             if marked_count == 1 {
                 rows_to_extract.insert(marked_index);
-                covered_columns.extend(
-                    self.cols
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(x, col)| col[marked_index].then_some(x)),
-                );
+                covered_columns.extend(self.cols.iter().enumerate().filter_map(|(x, col)| {
+                    if col[marked_index] {
+                        Some(x)
+                    } else {
+                        None
+                    }
+                }));
             }
         }
 
@@ -160,13 +170,20 @@ impl PrimeImplicantChart {
         any_extracted
     }
 
-    fn remove_dominating_terms(&mut self) -> bool {
+    fn remove_dominating_terms(
+        &mut self,
+        timeout_signal: &impl TTimeoutSignal,
+    ) -> Result<bool, Error> {
         let mut removed = false;
         #[cfg(test)]
         let mut count = 0;
 
         for x1 in (0..self.terms.len()).rev() {
             for x2 in (0..self.terms.len()).rev().filter(|&x| x != x1) {
+                if timeout_signal.is_signaled() {
+                    return Err(Error::Timeout);
+                }
+
                 if is_dominating(&self.cols[x1], &self.cols[x2]) {
                     self.remove_col(x1);
                     removed = true;
@@ -182,16 +199,27 @@ impl PrimeImplicantChart {
         #[cfg(test)]
         println!("Removed {} terms", count);
 
-        removed
+        if timeout_signal.is_signaled() {
+            Err(Error::Timeout)
+        } else {
+            Ok(removed)
+        }
     }
 
-    fn remove_dominated_implicants(&mut self) -> bool {
+    fn remove_dominated_implicants(
+        &mut self,
+        timeout_signal: &impl TTimeoutSignal,
+    ) -> Result<bool, Error> {
         let mut removed = false;
         #[cfg(test)]
         let mut count = 0;
 
         for y1 in (0..self.implicants.len()).rev() {
             for y2 in (0..self.implicants.len()).rev().filter(|&y| y != y1) {
+                if timeout_signal.is_signaled() {
+                    return Err(Error::Timeout);
+                }
+
                 if is_dominating(&self.rows[y2], &self.rows[y1])
                     // Only remove if it has more or an equal number of literals.
                     && self.implicants[y1].wildcard_count() <= self.implicants[y2].wildcard_count()
@@ -210,7 +238,11 @@ impl PrimeImplicantChart {
         #[cfg(test)]
         println!("Removed {} implicants", count);
 
-        removed
+        if timeout_signal.is_signaled() {
+            Err(Error::Timeout)
+        } else {
+            Ok(removed)
+        }
     }
 
     fn sort(&mut self) {

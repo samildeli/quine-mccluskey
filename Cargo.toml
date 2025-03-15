@@ -2,7 +2,7 @@
 name = "quine-mccluskey"
 version = "1.1.0"
 edition = "2021"
-rust-version = "1.66"
+rust-version = "1.61"
 description = "Boolean function minimizer based on Quine–McCluskey algorithm."
 authors = ["samildeli <samildeli.dev@gmail.com>"]
 license = "MIT"

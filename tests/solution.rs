@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use quine_mccluskey as qmc;
+use quine_mccluskey::MinimizeOptions;
 
 #[test]
 fn solution() {
@@ -69,8 +70,8 @@ fn test(
     let variables = &qmc::DEFAULT_VARIABLES[..variable_count as usize];
     let dont_cares = Vec::from_iter(get_dont_cares(
         variable_count,
-        &HashSet::from_iter(minterms.iter().copied()),
-        &HashSet::from_iter(maxterms.iter().copied()),
+        &minterms.iter().copied().collect(),
+        &maxterms.iter().copied().collect(),
     ));
 
     println!(
@@ -79,16 +80,22 @@ fn test(
     );
 
     assert_eq!(
-        qmc::minimize(variables, minterms, maxterms, qmc::SOP, false, None)
-            .unwrap()
-            .pop()
-            .unwrap()
-            .to_string(),
+        qmc::minimize_ex(
+            variables,
+            minterms,
+            maxterms,
+            qmc::SOP,
+            MinimizeOptions::default()
+        )
+        .unwrap()
+        .pop()
+        .unwrap()
+        .to_string(),
         expected_sop,
     );
 
     assert_eq!(
-        qmc::minimize_minterms(variables, minterms, &dont_cares, false, None)
+        qmc::minimize_minterms_ex(variables, minterms, &dont_cares, MinimizeOptions::default())
             .unwrap()
             .pop()
             .unwrap()
@@ -97,25 +104,51 @@ fn test(
     );
 
     assert_eq!(
-        qmc::minimize(variables, minterms, maxterms, qmc::SOP, true, None)
-            .unwrap()
-            .pop()
-            .unwrap()
-            .to_string(),
+        qmc::minimize_ex(
+            variables,
+            minterms,
+            maxterms,
+            qmc::SOP,
+            MinimizeOptions::default().set_find_all_solutions(true)
+        )
+        .unwrap()
+        .pop()
+        .unwrap()
+        .to_string(),
         expected_sop_all
     );
 
     assert_eq!(
-        qmc::minimize_minterms(variables, minterms, &dont_cares, true, None)
-            .unwrap()
-            .pop()
-            .unwrap()
-            .to_string(),
+        qmc::minimize_minterms_ex(
+            variables,
+            minterms,
+            &dont_cares,
+            MinimizeOptions::default().set_find_all_solutions(true)
+        )
+        .unwrap()
+        .pop()
+        .unwrap()
+        .to_string(),
         expected_sop_all
     );
 
     assert_eq!(
-        qmc::minimize(variables, minterms, maxterms, qmc::POS, false, None)
+        qmc::minimize_ex(
+            variables,
+            minterms,
+            maxterms,
+            qmc::POS,
+            MinimizeOptions::default()
+        )
+        .unwrap()
+        .pop()
+        .unwrap()
+        .to_string(),
+        expected_pos
+    );
+
+    assert_eq!(
+        qmc::minimize_maxterms_ex(variables, maxterms, &dont_cares, MinimizeOptions::default())
             .unwrap()
             .pop()
             .unwrap()
@@ -124,29 +157,31 @@ fn test(
     );
 
     assert_eq!(
-        qmc::minimize_maxterms(variables, maxterms, &dont_cares, false, None)
-            .unwrap()
-            .pop()
-            .unwrap()
-            .to_string(),
-        expected_pos
-    );
-
-    assert_eq!(
-        qmc::minimize(variables, minterms, maxterms, qmc::POS, true, None)
-            .unwrap()
-            .pop()
-            .unwrap()
-            .to_string(),
+        qmc::minimize_ex(
+            variables,
+            minterms,
+            maxterms,
+            qmc::POS,
+            MinimizeOptions::default().set_find_all_solutions(true)
+        )
+        .unwrap()
+        .pop()
+        .unwrap()
+        .to_string(),
         expected_pos_all
     );
 
     assert_eq!(
-        qmc::minimize_maxterms(variables, maxterms, &dont_cares, true, None)
-            .unwrap()
-            .pop()
-            .unwrap()
-            .to_string(),
+        qmc::minimize_maxterms_ex(
+            variables,
+            maxterms,
+            &dont_cares,
+            MinimizeOptions::default().set_find_all_solutions(true)
+        )
+        .unwrap()
+        .pop()
+        .unwrap()
+        .to_string(),
         expected_pos_all
     );
 }
@@ -156,7 +191,7 @@ fn get_dont_cares(
     minterms: &HashSet<u32>,
     maxterms: &HashSet<u32>,
 ) -> HashSet<u32> {
-    let all_terms: HashSet<u32> = HashSet::from_iter(0..1 << variable_count);
+    let all_terms = (0..1 << variable_count).collect::<HashSet<_>>();
     let cares = minterms.union(maxterms).copied().collect();
 
     all_terms.difference(&cares).copied().collect()

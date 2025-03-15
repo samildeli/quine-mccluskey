@@ -22,7 +22,7 @@ impl Implicant {
         if self.mask == other.mask {
             let diff = self.value ^ other.value;
 
-            if diff.count_ones() == 1 {
+            if diff.is_power_of_two() {
                 Some(Implicant {
                     value: self.value & !diff,
                     mask: self.mask | diff,
@@ -43,7 +43,7 @@ impl Implicant {
                 let mask = mask & !(1 << wildcard_index);
 
                 get_terms_(value, mask, terms);
-                get_terms_(value | 1 << wildcard_index, mask, terms);
+                get_terms_(value | (1 << wildcard_index), mask, terms);
             } else {
                 terms.insert(value);
             }
@@ -65,8 +65,8 @@ impl Implicant {
         let variable_count = variable_names.len();
 
         for i in (0..variable_count).rev() {
-            let value_bit = self.value >> i & 1;
-            let mask_bit = self.mask >> i & 1;
+            let value_bit = (self.value >> i) & 1;
+            let mask_bit = (self.mask >> i) & 1;
 
             if mask_bit != 1 {
                 let index = variable_count - i - 1;
@@ -95,10 +95,10 @@ impl VariableSort for Vec<Implicant> {
             }
 
             for i in (0..32).rev() {
-                let value_bit1 = impl1.value >> i & 1;
-                let value_bit2 = impl2.value >> i & 1;
-                let mask_bit1 = impl1.mask >> i & 1;
-                let mask_bit2 = impl2.mask >> i & 1;
+                let value_bit1 = (impl1.value >> i) & 1;
+                let value_bit2 = (impl2.value >> i) & 1;
+                let mask_bit1 = (impl1.mask >> i) & 1;
+                let mask_bit2 = (impl2.mask >> i) & 1;
 
                 // If both bits are the same variable but one is negated and the other is not,
                 if mask_bit1 == 0 && mask_bit2 == 0 && value_bit1 != value_bit2 {
@@ -141,8 +141,8 @@ mod tests {
             let mut str = String::new();
 
             for i in (0..variable_count).rev() {
-                let value_bit = self.value >> i & 1;
-                let mask_bit = self.mask >> i & 1;
+                let value_bit = (self.value >> i) & 1;
+                let mask_bit = (self.mask >> i) & 1;
 
                 if mask_bit == 1 {
                     str.push('-');

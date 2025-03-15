@@ -2,16 +2,20 @@
 //!
 //! # Usage
 //!
-//! ````
+//! ```rust
 //! use quine_mccluskey as qmc;
+//! use quine_mccluskey::MinimizeTimeoutStrategy as mts;
 //!
-//! let mut solutions = qmc::minimize(
+//! let minimize_options = qmc::MinimizeOptions::default()
+//!     .set_find_all_solutions(false)
+//!     .set_timeout_strategy(mts::Indefinitely);
+//!
+//! let mut solutions = qmc::minimize_ex(
 //!     &qmc::DEFAULT_VARIABLES[..3],
 //!     &[0, 5],        // minterms
 //!     &[1, 3, 4, 6],  // maxterms
 //!     qmc::SOP,
-//!     false,
-//!     None
+//!     minimize_options,
 //! )
 //! .unwrap();
 //!
@@ -19,15 +23,22 @@
 //!     solutions.pop().unwrap().to_string(),
 //!     "(A ∧ C) ∨ (~A ∧ ~C)"
 //! );
-//! ````
+//! ```
 //!
-//! [`minimize`] is sufficient for all use cases. But also check [`minimize_minterms`] and
-//! [`minimize_maxterms`] to see if they are more suitable for your use case.
+//! [`minimize_ex`] is sufficient for all use cases. But also check [`minimize_minterms_ex`] and
+//! [`minimize_maxterms_ex`] to see if they are more suitable for your use case.
 //!
 //! # Feature flags
 //!
 //! * `serde` -- Derives the [`Serialize`] and [`Deserialize`] traits for structs and enums.
 //!
+//! # Deprecated operations
+//! ## Version 1.1.0
+//! - [`minimize`] -> [`minimize_ex`]
+//! - [`minimize_minterms`] -> [`minimize_minterms_ex`]
+//! - [`minimize_maxterms`] -> [`minimize_maxterms_ex`]
+
+#![deny(deprecated)]
 
 mod group;
 mod implicant;
@@ -58,17 +69,28 @@ use crate::timeout_signal::{TTimeoutSignal, TimeoutSignalAtomicBool, TimeoutSign
 
 /// Minimizes the boolean function represented by the given `minterms` and `maxterms`.
 ///
+/// This function is the original `minimize` function, which has been deprecated since 1.1.0. Use [`minimize_ex`] instead.
+#[deprecated(since = "1.1.0", note = "use `minimize_ex` instead")]
+pub fn minimize<T: AsRef<str>>(
+    variables: &[T],
+    minterms: &[u32],
+    maxterms: &[u32],
+    form: Form,
+    find_all_solutions: bool,
+    timeout: Option<Duration>,
+) -> Result<Vec<Solution>, Error> {
+    let options = MinimizeOptions::new_with_args(find_all_solutions, timeout, false);
+    minimize_ex::<T>(variables, minterms, maxterms, form, options)
+}
+
+/// Minimizes the boolean function represented by the given `minterms` and `maxterms`.
+///
 /// Returns a list of equally minimal boolean expressions.
 ///
 /// `minterms` represent the terms whose output is 1 and `maxterms` represent the terms whose output is 0.
 /// The rest of the terms are inferred to be don't care conditions.
 ///
 /// `form` determines whether the minimized expression is of the form [`SOP`] (Sum of Products) or [`POS`] (Product of Sums).
-///
-/// If `find_all_solutions` is `true`, prime implicant chart simplification based on row/column dominance step will be skipped
-/// and all solutions will be returned. This on average makes the algorithm less efficient and more likely to get stuck.
-///
-/// If `timeout` is specified, the function will return [`Error::Timeout`] if the solution is not found within the given time.
 ///
 /// # Example
 ///
@@ -87,16 +109,20 @@ use crate::timeout_signal::{TTimeoutSignal, TimeoutSignalAtomicBool, TimeoutSign
 ///
 /// In [`SOP`] form:
 ///
-/// ```
+/// ```rust
 /// use quine_mccluskey as qmc;
+/// use quine_mccluskey::MinimizeTimeoutStrategy as mts;
 ///
-/// let mut solutions = qmc::minimize(
+/// let minimize_options = qmc::MinimizeOptions::default()
+///     .set_find_all_solutions(false)
+///     .set_timeout_strategy(mts::Indefinitely);
+///
+/// let mut solutions = qmc::minimize_ex(
 ///     &qmc::DEFAULT_VARIABLES[..3],
 ///     &[0, 5],
 ///     &[1, 3, 4, 6],
 ///     qmc::SOP,
-///     false,
-///     None
+///     minimize_options,
 /// )
 /// .unwrap();
 ///
@@ -104,20 +130,24 @@ use crate::timeout_signal::{TTimeoutSignal, TimeoutSignalAtomicBool, TimeoutSign
 ///     solutions.pop().unwrap().to_string(),
 ///     "(A ∧ C) ∨ (~A ∧ ~C)"
 /// );
-///
 /// ```
 ///
 /// And in [`POS`] form:
 ///
-/// ```
-/// # use quine_mccluskey as qmc;
-/// let mut solutions = qmc::minimize(
+/// ```rust
+/// use quine_mccluskey as qmc;
+/// use quine_mccluskey::MinimizeTimeoutStrategy as mts;
+///
+/// let minimize_options = qmc::MinimizeOptions::default()
+///     .set_find_all_solutions(false)
+///     .set_timeout_strategy(mts::Indefinitely);
+///
+/// let mut solutions = qmc::minimize_ex(
 ///     &qmc::DEFAULT_VARIABLES[..3],
 ///     &[0, 5],
 ///     &[1, 3, 4, 6],
 ///     qmc::POS,
-///     false,
-///     None
+///     minimize_options,
 /// )
 /// .unwrap();
 ///
@@ -125,34 +155,30 @@ use crate::timeout_signal::{TTimeoutSignal, TimeoutSignalAtomicBool, TimeoutSign
 ///     solutions.pop().unwrap().to_string(),
 ///     "(A ∨ ~C) ∧ (~A ∨ C)"
 /// );
-/// ````
-pub fn minimize<T: AsRef<str>>(
+/// ```
+pub fn minimize_ex<T: AsRef<str>>(
     variables: &[T],
     minterms: &[u32],
     maxterms: &[u32],
     form: Form,
-    find_all_solutions: bool,
-    timeout: Option<Duration>,
+    options: MinimizeOptions,
 ) -> Result<Vec<Solution>, Error> {
     let variables = own_variables(variables);
-    let variable_count = variables.len() as u32;
 
-    let minterms = HashSet::from_iter(minterms.iter().copied());
-    let maxterms = HashSet::from_iter(maxterms.iter().copied());
+    let variable_count = variables.len();
+    let variable_count =
+        u32::try_from(variable_count).map_err(|_| Error::InvalidVariableCount(variable_count))?;
+
+    let minterms = minterms.iter().copied().collect();
+    let maxterms = maxterms.iter().copied().collect();
 
     validate_input(&variables, &minterms, &maxterms)?;
 
     let dont_cares = get_dont_cares(variable_count, &minterms, &maxterms);
     let terms = if form == SOP { minterms } else { maxterms };
 
-    let internal_solutions = minimize_internal_with_timeout(
-        variable_count,
-        terms,
-        dont_cares,
-        form,
-        find_all_solutions,
-        timeout,
-    )?;
+    let internal_solutions =
+        minimize_internal_with_timeout(variable_count, terms, dont_cares, form, options)?;
 
     Ok(internal_solutions
         .iter()
@@ -162,7 +188,22 @@ pub fn minimize<T: AsRef<str>>(
 
 /// Minimizes the boolean function represented by the given `minterms` and `dont_cares`.
 ///
-/// The only other difference to [`minimize`] is that it doesn't take an argument for form,
+/// This function is the original `minimize_minterms` function, which has been deprecated since 1.1.0. Use [`minimize_minterms_ex`] instead.
+#[deprecated(since = "1.1.0", note = "use `minimize_minterms_ex` instead")]
+pub fn minimize_minterms<T: AsRef<str>>(
+    variables: &[T],
+    minterms: &[u32],
+    dont_cares: &[u32],
+    find_all_solutions: bool,
+    timeout: Option<Duration>,
+) -> Result<Vec<Solution>, Error> {
+    let options = MinimizeOptions::new_with_args(find_all_solutions, timeout, false);
+    minimize_minterms_ex::<T>(variables, minterms, dont_cares, options)
+}
+
+/// Minimizes the boolean function represented by the given `minterms` and `dont_cares`.
+///
+/// The only other difference to [`minimize_ex`] is that it doesn't take an argument for form,
 /// instead always returns in [`SOP`] form.
 ///
 /// # Example
@@ -180,15 +221,19 @@ pub fn minimize<T: AsRef<str>>(
 /// | 1 | 1 | 0 | 0      |
 /// | 1 | 1 | 1 | X      |
 ///
-/// ```
+/// ```rust
 /// use quine_mccluskey as qmc;
+/// use quine_mccluskey::MinimizeTimeoutStrategy as mts;
 ///
-/// let mut solutions = qmc::minimize_minterms(
+/// let minimize_options = qmc::MinimizeOptions::default()
+///     .set_find_all_solutions(false)
+///     .set_timeout_strategy(mts::Indefinitely);
+///
+/// let mut solutions = qmc::minimize_minterms_ex(
 ///     &qmc::DEFAULT_VARIABLES[..3],
 ///     &[0, 5],
 ///     &[2, 7],
-///     false,
-///     None
+///     minimize_options,
 /// )
 /// .unwrap();
 ///
@@ -196,30 +241,26 @@ pub fn minimize<T: AsRef<str>>(
 ///     solutions.pop().unwrap().to_string(),
 ///     "(A ∧ C) ∨ (~A ∧ ~C)"
 /// );
-/// ````
-pub fn minimize_minterms<T: AsRef<str>>(
+/// ```
+pub fn minimize_minterms_ex<T: AsRef<str>>(
     variables: &[T],
     minterms: &[u32],
     dont_cares: &[u32],
-    find_all_solutions: bool,
-    timeout: Option<Duration>,
+    options: MinimizeOptions,
 ) -> Result<Vec<Solution>, Error> {
     let variables = own_variables(variables);
-    let variable_count = variables.len() as u32;
 
-    let minterms = HashSet::from_iter(minterms.iter().copied());
-    let dont_cares = HashSet::from_iter(dont_cares.iter().copied());
+    let variable_count = variables.len();
+    let variable_count =
+        u32::try_from(variable_count).map_err(|_| Error::InvalidVariableCount(variable_count))?;
+
+    let minterms = minterms.iter().copied().collect();
+    let dont_cares = dont_cares.iter().copied().collect();
 
     validate_input(&variables, &minterms, &dont_cares)?;
 
-    let internal_solutions = minimize_internal_with_timeout(
-        variable_count,
-        minterms,
-        dont_cares,
-        SOP,
-        find_all_solutions,
-        timeout,
-    )?;
+    let internal_solutions =
+        minimize_internal_with_timeout(variable_count, minterms, dont_cares, SOP, options)?;
 
     Ok(internal_solutions
         .iter()
@@ -229,7 +270,22 @@ pub fn minimize_minterms<T: AsRef<str>>(
 
 /// Minimizes the boolean function represented by the given `maxterms` and `dont_cares`.
 ///
-/// The only other difference to [`minimize`] is that it doesn't take an argument for form,
+/// This function is the original `minimize_maxterms` function, which has been deprecated since 1.1.0. Use [`minimize_maxterms_ex`] instead.
+#[deprecated(since = "1.1.0", note = "use `minimize_maxterms_ex` instead")]
+pub fn minimize_maxterms<T: AsRef<str>>(
+    variables: &[T],
+    maxterms: &[u32],
+    dont_cares: &[u32],
+    find_all_solutions: bool,
+    timeout: Option<Duration>,
+) -> Result<Vec<Solution>, Error> {
+    let options = MinimizeOptions::new_with_args(find_all_solutions, timeout, false);
+    minimize_maxterms_ex::<T>(variables, maxterms, dont_cares, options)
+}
+
+/// Minimizes the boolean function represented by the given `maxterms` and `dont_cares`.
+///
+/// The only other difference to [`minimize_ex`] is that it doesn't take an argument for form,
 /// instead always returns in [`POS`] form.
 ///
 /// # Example
@@ -247,15 +303,19 @@ pub fn minimize_minterms<T: AsRef<str>>(
 /// | 1 | 1 | 0 | 0      |
 /// | 1 | 1 | 1 | X      |
 ///
-/// ```
+/// ```rust
 /// use quine_mccluskey as qmc;
+/// use quine_mccluskey::MinimizeTimeoutStrategy as mts;
 ///
-/// let mut solutions = qmc::minimize_maxterms(
+/// let minimize_options = qmc::MinimizeOptions::default()
+///     .set_find_all_solutions(false)
+///     .set_timeout_strategy(mts::Indefinitely);
+///
+/// let mut solutions = qmc::minimize_maxterms_ex(
 ///     &qmc::DEFAULT_VARIABLES[..3],
 ///     &[1, 3, 4, 6],
 ///     &[2, 7],
-///     false,
-///     None
+///     minimize_options,
 /// )
 /// .unwrap();
 ///
@@ -263,30 +323,26 @@ pub fn minimize_minterms<T: AsRef<str>>(
 ///     solutions.pop().unwrap().to_string(),
 ///     "(A ∨ ~C) ∧ (~A ∨ C)"
 /// );
-/// ````
-pub fn minimize_maxterms<T: AsRef<str>>(
+/// ```
+pub fn minimize_maxterms_ex<T: AsRef<str>>(
     variables: &[T],
     maxterms: &[u32],
     dont_cares: &[u32],
-    find_all_solutions: bool,
-    timeout: Option<Duration>,
+    options: MinimizeOptions,
 ) -> Result<Vec<Solution>, Error> {
     let variables = own_variables(variables);
-    let variable_count = variables.len() as u32;
 
-    let maxterms = HashSet::from_iter(maxterms.iter().copied());
-    let dont_cares = HashSet::from_iter(dont_cares.iter().copied());
+    let variable_count = variables.len();
+    let variable_count =
+        u32::try_from(variable_count).map_err(|_| Error::InvalidVariableCount(variable_count))?;
+
+    let maxterms = maxterms.iter().copied().collect();
+    let dont_cares = dont_cares.iter().copied().collect();
 
     validate_input(&variables, &maxterms, &dont_cares)?;
 
-    let internal_solutions = minimize_internal_with_timeout(
-        variable_count,
-        maxterms,
-        dont_cares,
-        POS,
-        find_all_solutions,
-        timeout,
-    )?;
+    let internal_solutions =
+        minimize_internal_with_timeout(variable_count, maxterms, dont_cares, POS, options)?;
 
     Ok(internal_solutions
         .iter()
@@ -310,12 +366,104 @@ pub static DEFAULT_VARIABLES: [&str; 26] = [
     "T", "U", "V", "W", "X", "Y", "Z",
 ];
 
+/// Configures the timeout strategy.
+///
+/// Specifies the maximum allowed duration for the minimize process and determines how the system handles long-running operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum MinimizeTimeoutStrategy {
+    /// No timeout - allows the minimize process to run indefinitely.
+    /// The operation will block until completion without any time restrictions.
+    Indefinitely,
+
+    /// Safe controlled minimize with best-effort timeout.
+    ///
+    /// # Timeout Guarantees
+    /// Actual abort duration may exceed the timeout due to:
+    /// - Internal stop signal operation
+    /// - Internal worker thread cleanup
+    Safe {
+        /// Maximum duration to wait for minimize before aborting.
+        timeout: Duration,
+    },
+
+    /// Uncontrolled minimize with the fastest possible timeout (deprecated).
+    ///
+    /// Prefer [`MinimizeTimeoutStrategy::Safe`]
+    ///
+    /// # Warning
+    /// Using this timeout strategy may cause:
+    /// - Thread pool exhaustion
+    /// - Resource starvation
+    /// - Unresponsive systems
+    #[deprecated(
+        note = "In resource-limited environments or with many consecutive/simultaneous minimize operations, \
+        this can exceed the OS thread limit `getrlimit(RLIMIT_NPROC, ..)`! Prefer `MinimizeTimeoutStrategy::Safe`"
+    )]
+    Fast {
+        /// Maximum duration to wait for minimize before aborting.
+        timeout: Duration,
+    },
+}
+impl Default for MinimizeTimeoutStrategy {
+    fn default() -> Self {
+        Self::Indefinitely
+    }
+}
+
+/// Configuration options for minimize operations.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct MinimizeOptions {
+    find_all_solutions: bool,
+    timeout_strategy: MinimizeTimeoutStrategy,
+}
+impl MinimizeOptions {
+    /// If `find_all_solutions` is [`true`], prime implicant chart simplification based on row/column dominance step will be skipped
+    /// and all solutions will be returned. This on average makes the algorithm less efficient and more likely to get stuck.
+    #[must_use]
+    pub fn set_find_all_solutions(mut self, find_all_solutions: bool) -> Self {
+        self.find_all_solutions = find_all_solutions;
+        self
+    }
+
+    /// If `timeout_strategy` is not [`MinimizeTimeoutStrategy::Indefinitely`],
+    /// the function will return [`Error::Timeout`] if the solution is not found within the given time.
+    #[must_use]
+    pub fn set_timeout_strategy(mut self, timeout_strategy: MinimizeTimeoutStrategy) -> Self {
+        self.timeout_strategy = timeout_strategy;
+        self
+    }
+}
+impl MinimizeOptions {
+    #[must_use]
+    fn new_with_args(
+        find_all_solutions: bool,
+        timeout: Option<Duration>,
+        safe_timeout_strategy: bool,
+    ) -> Self {
+        Self::default()
+            .set_find_all_solutions(find_all_solutions)
+            .set_timeout_strategy(timeout.map_or(
+                MinimizeTimeoutStrategy::Indefinitely,
+                |timeout| {
+                    if safe_timeout_strategy {
+                        MinimizeTimeoutStrategy::Safe { timeout }
+                    } else {
+                        #[allow(deprecated)]
+                        MinimizeTimeoutStrategy::Fast { timeout }
+                    }
+                },
+            ))
+    }
+}
+
 /// Error types for bad input and timeout.
 #[derive(Debug, thiserror::Error, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Error {
     /// The number of variables was less than 1 or greater than `DEFAULT_VARIABLES.len()`.
-    #[error("Invalid variable count: {default_len} (expected 1 <= variables.len() <= {default_len})", default_len = DEFAULT_VARIABLES.len())]
+    #[error("Invalid variable count: {0} (expected 1 <= variables.len() <= {max_len})", max_len = DEFAULT_VARIABLES.len())]
     InvalidVariableCount(usize),
     /// Variable was 0, 1, empty string or string with leading or trailing whitespace.
     #[error("0, 1, empty string and strings with leading or trailing whitespace are not allowed as variables.")]
@@ -342,18 +490,22 @@ fn minimize_internal_with_timeout(
     terms: HashSet<u32>,
     dont_cares: HashSet<u32>,
     form: Form,
-    find_all_solutions: bool,
-    timeout: Option<Duration>,
+    options: MinimizeOptions,
 ) -> Result<Vec<Vec<Implicant>>, Error> {
-    let Some(timeout) = timeout else {
-        return minimize_internal(
-            &TimeoutSignalNoOp,
-            variable_count,
-            &terms,
-            &dont_cares,
-            form,
-            find_all_solutions,
-        );
+    let (timeout, join_worker_thread) = match options.timeout_strategy {
+        MinimizeTimeoutStrategy::Indefinitely => {
+            return minimize_internal(
+                variable_count,
+                &terms,
+                &dont_cares,
+                form,
+                options.find_all_solutions,
+                &TimeoutSignalNoOp,
+            )
+        }
+        MinimizeTimeoutStrategy::Safe { timeout } => (timeout, true),
+        #[allow(deprecated)]
+        MinimizeTimeoutStrategy::Fast { timeout } => (timeout, false),
     };
 
     let (sender, receiver) = mpsc::channel();
@@ -372,41 +524,43 @@ fn minimize_internal_with_timeout(
         .spawn(move || {
             sender
                 .send(minimize_internal(
-                    timeout_signal.as_ref(),
                     variable_count,
                     &terms,
                     &dont_cares,
                     form,
-                    find_all_solutions,
+                    options.find_all_solutions,
+                    timeout_signal.as_ref(),
                 ))
-                .unwrap()
+                .unwrap();
         })
         .expect("failed to spawn quine-mccluskey worker thread");
 
     let result = receiver.recv_timeout(timeout);
 
     outer_timeout_signal.signal();
-    worker_thread
-        .join()
-        .expect("failed to join quine-mccluskey worker thread");
+    if join_worker_thread {
+        worker_thread
+            .join()
+            .expect("failed to join quine-mccluskey worker thread");
+    }
 
     result.unwrap()
 }
 
 fn minimize_internal(
-    timeout_signal: &impl TTimeoutSignal,
     variable_count: u32,
     terms: &HashSet<u32>,
     dont_cares: &HashSet<u32>,
     form: Form,
     find_all_solutions: bool,
+    timeout_signal: &impl TTimeoutSignal,
 ) -> Result<Vec<Vec<Implicant>>, Error> {
     let prime_implicants =
-        find_prime_implicants(timeout_signal, variable_count, terms, dont_cares, form)?;
+        find_prime_implicants(variable_count, terms, dont_cares, form, timeout_signal)?;
     let mut prime_implicant_chart = PrimeImplicantChart::new(prime_implicants, dont_cares);
     let essential_prime_implicants =
-        prime_implicant_chart.simplify(timeout_signal, find_all_solutions)?;
-    let petrick_solutions = Petrick::solve(timeout_signal, &prime_implicant_chart)?;
+        prime_implicant_chart.simplify(find_all_solutions, timeout_signal)?;
+    let petrick_solutions = Petrick::solve(&prime_implicant_chart, timeout_signal)?;
 
     let mut solutions = petrick_solutions
         .iter()
@@ -426,11 +580,11 @@ fn minimize_internal(
 }
 
 fn find_prime_implicants(
-    timeout_signal: &impl TTimeoutSignal,
     variable_count: u32,
     terms: &HashSet<u32>,
     dont_cares: &HashSet<u32>,
     form: Form,
+    timeout_signal: &impl TTimeoutSignal,
 ) -> Result<Vec<Implicant>, Error> {
     let terms = terms.union(dont_cares).copied().collect();
     let mut groups = Group::group_terms(variable_count, &terms, form);
@@ -476,15 +630,14 @@ fn get_dont_cares(
     minterms: &HashSet<u32>,
     maxterms: &HashSet<u32>,
 ) -> HashSet<u32> {
-    let all_terms: HashSet<u32> = HashSet::from_iter(0..1 << variable_count);
+    let all_terms = (0..1 << variable_count).collect::<HashSet<_>>();
     let cares = minterms.union(maxterms).copied().collect();
 
     all_terms.difference(&cares).copied().collect()
 }
 
 fn check_solution(terms: &HashSet<u32>, dont_cares: &HashSet<u32>, solution: &[Implicant]) -> bool {
-    let covered_terms =
-        HashSet::from_iter(solution.iter().flat_map(|implicant| implicant.get_terms()));
+    let covered_terms = solution.iter().flat_map(Implicant::get_terms).collect();
     let terms_with_dont_cares = terms.union(dont_cares).copied().collect();
 
     terms.is_subset(&covered_terms) && covered_terms.is_subset(&terms_with_dont_cares)
@@ -624,24 +777,27 @@ mod tests {
             form: Form,
             expected: &[&str],
         ) {
-            let minterms = HashSet::from_iter(minterms.iter().copied());
-            let maxterms = HashSet::from_iter(maxterms.iter().copied());
+            let minterms = minterms.iter().copied().collect();
+            let maxterms = maxterms.iter().copied().collect();
 
             let dont_cares = get_dont_cares(variable_count, &minterms, &maxterms);
             let terms = if form == SOP { minterms } else { maxterms };
 
             let result = find_prime_implicants(
-                &TimeoutSignalNoOp,
                 variable_count,
                 &terms,
                 &dont_cares,
                 form,
+                &TimeoutSignalNoOp,
             )
             .unwrap();
 
             assert_eq!(
                 result.into_iter().collect::<HashSet<_>>(),
-                HashSet::from_iter(expected.iter().map(|str| Implicant::from_str(str)))
+                expected
+                    .iter()
+                    .map(|str| Implicant::from_str(str))
+                    .collect()
             );
         }
 
@@ -693,8 +849,8 @@ mod tests {
     ) {
         let dont_cares = Vec::from_iter(get_dont_cares(
             variable_count,
-            &HashSet::from_iter(minterms.iter().copied()),
-            &HashSet::from_iter(maxterms.iter().copied()),
+            &minterms.iter().copied().collect(),
+            &maxterms.iter().copied().collect(),
         ));
 
         println!(
@@ -702,13 +858,16 @@ mod tests {
             form, find_all_solutions, variable_count, minterms, maxterms, dont_cares
         );
 
-        let solutions = minimize(
+        let minimize_options = MinimizeOptions::default()
+            .set_find_all_solutions(find_all_solutions)
+            .set_timeout_strategy(MinimizeTimeoutStrategy::Indefinitely);
+
+        let solutions = minimize_ex(
             &DEFAULT_VARIABLES[..variable_count as usize],
             minterms,
             maxterms,
             form,
-            find_all_solutions,
-            None,
+            minimize_options,
         )
         .unwrap();
 
@@ -716,14 +875,14 @@ mod tests {
             "{:#?}",
             solutions
                 .iter()
-                .map(|solution| solution.to_string())
+                .map(ToString::to_string)
                 .collect::<Vec<_>>()
         );
     }
 
     fn generate_terms_exhaustive(variable_count: u32) -> Vec<(Vec<u32>, Vec<u32>)> {
         let mut generated_terms = vec![];
-        let all_terms: HashSet<u32> = HashSet::from_iter(0..1 << variable_count);
+        let all_terms = (0..1 << variable_count).collect::<HashSet<_>>();
 
         for i in 0..=all_terms.len() {
             let minterm_combinations = all_terms
@@ -757,7 +916,7 @@ mod tests {
         let mut rng = rand::rng();
 
         for _ in 0..count {
-            let mut all_terms = Vec::from_iter(0..1 << variable_count);
+            let mut all_terms = (0..1 << variable_count).collect::<Vec<_>>();
             let mut minterms = vec![];
             let mut maxterms = vec![];
 
