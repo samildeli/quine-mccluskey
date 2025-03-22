@@ -79,118 +79,74 @@ fn test(
     );
 
     assert_eq!(
-        qmc::minimize_ex(
-            variables,
-            minterms,
-            maxterms,
-            qmc::SOP,
-            qmc::MinimizeOptions::default()
-        )
-        .unwrap()
-        .pop()
-        .unwrap()
-        .to_string(),
+        qmc::minimize(variables, minterms, maxterms, qmc::SOP, false, None)
+            .unwrap()
+            .pop()
+            .unwrap()
+            .to_string(),
         expected_sop,
     );
 
     assert_eq!(
-        qmc::minimize_minterms_ex(
-            variables,
-            minterms,
-            &dont_cares,
-            qmc::MinimizeOptions::default()
-        )
-        .unwrap()
-        .pop()
-        .unwrap()
-        .to_string(),
+        qmc::minimize_minterms(variables, minterms, &dont_cares, false, None)
+            .unwrap()
+            .pop()
+            .unwrap()
+            .to_string(),
         expected_sop
     );
 
     assert_eq!(
-        qmc::minimize_ex(
-            variables,
-            minterms,
-            maxterms,
-            qmc::SOP,
-            qmc::MinimizeOptions::default().set_find_all_solutions(true)
-        )
-        .unwrap()
-        .pop()
-        .unwrap()
-        .to_string(),
+        qmc::minimize(variables, minterms, maxterms, qmc::SOP, true, None)
+            .unwrap()
+            .pop()
+            .unwrap()
+            .to_string(),
         expected_sop_all
     );
 
     assert_eq!(
-        qmc::minimize_minterms_ex(
-            variables,
-            minterms,
-            &dont_cares,
-            qmc::MinimizeOptions::default().set_find_all_solutions(true)
-        )
-        .unwrap()
-        .pop()
-        .unwrap()
-        .to_string(),
+        qmc::minimize_minterms(variables, minterms, &dont_cares, true, None)
+            .unwrap()
+            .pop()
+            .unwrap()
+            .to_string(),
         expected_sop_all
     );
 
     assert_eq!(
-        qmc::minimize_ex(
-            variables,
-            minterms,
-            maxterms,
-            qmc::POS,
-            qmc::MinimizeOptions::default()
-        )
-        .unwrap()
-        .pop()
-        .unwrap()
-        .to_string(),
+        qmc::minimize(variables, minterms, maxterms, qmc::POS, false, None)
+            .unwrap()
+            .pop()
+            .unwrap()
+            .to_string(),
         expected_pos
     );
 
     assert_eq!(
-        qmc::minimize_maxterms_ex(
-            variables,
-            maxterms,
-            &dont_cares,
-            qmc::MinimizeOptions::default()
-        )
-        .unwrap()
-        .pop()
-        .unwrap()
-        .to_string(),
+        qmc::minimize_maxterms(variables, maxterms, &dont_cares, false, None)
+            .unwrap()
+            .pop()
+            .unwrap()
+            .to_string(),
         expected_pos
     );
 
     assert_eq!(
-        qmc::minimize_ex(
-            variables,
-            minterms,
-            maxterms,
-            qmc::POS,
-            qmc::MinimizeOptions::default().set_find_all_solutions(true)
-        )
-        .unwrap()
-        .pop()
-        .unwrap()
-        .to_string(),
+        qmc::minimize(variables, minterms, maxterms, qmc::POS, true, None)
+            .unwrap()
+            .pop()
+            .unwrap()
+            .to_string(),
         expected_pos_all
     );
 
     assert_eq!(
-        qmc::minimize_maxterms_ex(
-            variables,
-            maxterms,
-            &dont_cares,
-            qmc::MinimizeOptions::default().set_find_all_solutions(true)
-        )
-        .unwrap()
-        .pop()
-        .unwrap()
-        .to_string(),
+        qmc::minimize_maxterms(variables, maxterms, &dont_cares, true, None)
+            .unwrap()
+            .pop()
+            .unwrap()
+            .to_string(),
         expected_pos_all
     );
 }

@@ -1,7 +1,6 @@
 use std::time::Duration;
 
 use quine_mccluskey as qmc;
-use quine_mccluskey::{MinimizeOptions, MinimizeTimeoutStrategy};
 
 static TERMS1: &[u32] = &[
     107, 548, 46, 906, 226, 529, 716, 814, 972, 652, 89, 810, 231, 524, 113, 853, 59, 184, 947,
@@ -48,73 +47,40 @@ static TERMS2: &[u32] = &[
 
 #[test]
 #[should_panic(expected = "Timeout")]
-fn timeout1_safe() {
-    timeout1(MinimizeTimeoutStrategy::Safe {
-        timeout: Duration::from_secs(1),
-    });
-}
-
-#[test]
-#[should_panic(expected = "Timeout")]
-fn timeout1_fast() {
-    #[allow(deprecated)]
-    timeout1(MinimizeTimeoutStrategy::Fast {
-        timeout: Duration::from_secs(1),
-    });
-}
-
-fn timeout1(timeout_strategy: MinimizeTimeoutStrategy) {
-    let options = MinimizeOptions::default().set_timeout_strategy(timeout_strategy);
-    qmc::minimize_ex(
+fn timeout1() {
+    qmc::minimize(
         &qmc::DEFAULT_VARIABLES[..10],
         TERMS1,
         TERMS2,
         qmc::SOP,
-        options,
+        false,
+        Some(Duration::from_secs(1)),
     )
     .unwrap();
 }
 
 #[test]
 #[should_panic(expected = "Timeout")]
-fn timeout2_safe() {
-    timeout2(MinimizeTimeoutStrategy::Safe {
-        timeout: Duration::from_secs(1),
-    });
+fn timeout2() {
+    qmc::minimize_minterms(
+        &qmc::DEFAULT_VARIABLES[..10],
+        TERMS1,
+        TERMS2,
+        false,
+        Some(Duration::from_secs(1)),
+    )
+    .unwrap();
 }
 
 #[test]
 #[should_panic(expected = "Timeout")]
-fn timeout2_fast() {
-    #[allow(deprecated)]
-    timeout2(MinimizeTimeoutStrategy::Fast {
-        timeout: Duration::from_secs(1),
-    });
-}
-
-fn timeout2(timeout_strategy: MinimizeTimeoutStrategy) {
-    let options = MinimizeOptions::default().set_timeout_strategy(timeout_strategy);
-    qmc::minimize_minterms_ex(&qmc::DEFAULT_VARIABLES[..10], TERMS1, TERMS2, options).unwrap();
-}
-
-#[test]
-#[should_panic(expected = "Timeout")]
-fn timeout3_safe() {
-    timeout3(MinimizeTimeoutStrategy::Safe {
-        timeout: Duration::from_secs(1),
-    });
-}
-
-#[test]
-#[should_panic(expected = "Timeout")]
-fn timeout3_fast() {
-    #[allow(deprecated)]
-    timeout3(MinimizeTimeoutStrategy::Fast {
-        timeout: Duration::from_secs(1),
-    });
-}
-
-fn timeout3(timeout_strategy: MinimizeTimeoutStrategy) {
-    let options = MinimizeOptions::default().set_timeout_strategy(timeout_strategy);
-    qmc::minimize_maxterms_ex(&qmc::DEFAULT_VARIABLES[..10], TERMS1, TERMS2, options).unwrap();
+fn timeout3() {
+    qmc::minimize_maxterms(
+        &qmc::DEFAULT_VARIABLES[..10],
+        TERMS1,
+        TERMS2,
+        false,
+        Some(Duration::from_secs(1)),
+    )
+    .unwrap();
 }
