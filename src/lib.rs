@@ -563,12 +563,12 @@ fn validate_input(
 
 #[cfg(test)]
 mod tests {
-	use itertools::Itertools;
-	use rand::Rng;
+    use itertools::Itertools;
+    use rand::Rng;
 
-	use super::*;
+    use super::*;
 
-	#[test]
+    #[test]
     fn test_minimize_exhaustive() {
         for variable_count in 1..=3 {
             let term_combinations = generate_terms_exhaustive(variable_count);
