@@ -1,7 +1,8 @@
 [package]
 name = "quine-mccluskey"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
+rust-version = "1.61"
 description = "Boolean function minimizer based on Quine–McCluskey algorithm."
 authors = ["samildeli <samildeli.dev@gmail.com>"]
 license = "MIT"
@@ -10,9 +11,9 @@ keywords = ["boolean", "minimize", "algorithm"]
 categories = ["algorithms"]
 
 [dependencies]
-serde = { version = "1.0.197", features = ["derive"], optional = true }
-thiserror = "1.0.57"
+serde = { version = "1.0.219", features = ["derive"], optional = true }
+thiserror = "2.0.12"
 
 [dev-dependencies]
-itertools = "0.12.1"
-rand = "0.8.5"
+itertools = "0.14.0"
+rand = "0.9.0"

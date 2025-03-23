@@ -47,7 +47,7 @@ static TERMS2: &[u32] = &[
 
 #[test]
 #[should_panic(expected = "Timeout")]
-fn timeout() {
+fn timeout1() {
     qmc::minimize(
         &qmc::DEFAULT_VARIABLES[..10],
         TERMS1,

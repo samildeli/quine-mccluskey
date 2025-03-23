@@ -69,8 +69,8 @@ fn test(
     let variables = &qmc::DEFAULT_VARIABLES[..variable_count as usize];
     let dont_cares = Vec::from_iter(get_dont_cares(
         variable_count,
-        &HashSet::from_iter(minterms.iter().copied()),
-        &HashSet::from_iter(maxterms.iter().copied()),
+        &minterms.iter().copied().collect(),
+        &maxterms.iter().copied().collect(),
     ));
 
     println!(
@@ -156,7 +156,7 @@ fn get_dont_cares(
     minterms: &HashSet<u32>,
     maxterms: &HashSet<u32>,
 ) -> HashSet<u32> {
-    let all_terms: HashSet<u32> = HashSet::from_iter(0..1 << variable_count);
+    let all_terms = (0..1 << variable_count).collect::<HashSet<_>>();
     let cares = minterms.union(maxterms).copied().collect();
 
     all_terms.difference(&cares).copied().collect()

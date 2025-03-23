@@ -31,7 +31,7 @@ let mut solutions = qmc::minimize(
     &[1, 3, 4, 6],  // maxterms
     qmc::SOP,
     false,
-    None
+    None,
 )
 .unwrap();
 
@@ -44,12 +44,14 @@ assert_eq!(
 or using `minimize_minterms` with minterms and don't cares:
 
 ```rust
+use quine_mccluskey as qmc;
+
 let mut solutions = qmc::minimize_minterms(
     &qmc::DEFAULT_VARIABLES[..3],
     &[0, 5],  // minterms
     &[2, 7],  // don't cares
     false,
-    None
+    None,
 )
 .unwrap();
 
@@ -62,13 +64,15 @@ assert_eq!(
 And in Product of Sums form using `minimize` with minterms and maxterms and `Form::POS`:
 
 ```rust
+use quine_mccluskey as qmc;
+
 let mut solutions = qmc::minimize(
     &qmc::DEFAULT_VARIABLES[..3],
     &[0, 5],        // minterms
     &[1, 3, 4, 6],  // maxterms
     qmc::POS,
     false,
-    None
+    None,
 )
 .unwrap();
 
@@ -81,12 +85,14 @@ assert_eq!(
 or using `minimize_maxterms` with maxterms and don't cares:
 
 ```rust
+use quine_mccluskey as qmc;
+
 let mut solutions = qmc::minimize_maxterms(
     &qmc::DEFAULT_VARIABLES[..3],
     &[1, 3, 4, 6],  // maxterms
     &[2, 7],        // don't cares
     false,
-    None
+    None,
 )
 .unwrap();
 
